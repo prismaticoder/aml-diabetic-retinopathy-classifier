@@ -1,0 +1,25 @@
+# Ignore dataset directory
+dataset/
+data/
+*.zip
+*.tar.gz
+*.h5
+*.tfrecord
+
+# Ignore virtual environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore output folder (as models will be updated frequently)
+output/
+
+# Ignore log files
+*.log
+logs/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
