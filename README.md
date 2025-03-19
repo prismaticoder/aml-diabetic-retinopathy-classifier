@@ -7,7 +7,7 @@ A deep learning-based tool to detect Diabetic Retinopathy (DR) using ResNet-50 a
 ✔ Trained CNN Models – ResNet-50 & EfficientNet-B0✔ Image Upload via Web UI – Run inference on new retina images✔ Automatic Model Selection – Choose between different trained models✔ Performance Metrics – Accuracy, Confusion Matrix, and Probability Distributions✔ Scalable Training Pipeline – Continually train new models and update results
 
 📂 Project Structure
-
+```bash
 diabetic_retinopathy_grading/
 │── dataset/              # Dataset (⚠️ Not included in GitHub, download from Google Drive)
 │── venv/                 # Virtual Environment (⚠️ Not included in GitHub, download from Google Drive)
@@ -21,6 +21,7 @@ diabetic_retinopathy_grading/
 │── README.md             # Documentation
 │── requirements.txt      # Required Python Libraries
 └── .gitignore            # Files to ignore when pushing to GitHub
+```
 
 🛠 Installation & Setup
 
