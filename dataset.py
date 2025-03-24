@@ -19,7 +19,7 @@ class DiabeticRetinopathyDataset(Dataset):
 
     def __getitem__(self, idx):
         # 🖼️ Get image path like: train/10_left.jpeg
-        img_path = os.path.join(self.root_dir, self.annotations.iloc[idx, 0] + ".jpeg")
+        img_path = os.path.join(self.root_dir, self.annotations.iloc[idx, 0] + ".png")
         image = Image.open(img_path).convert("RGB")
         label = int(self.annotations.iloc[idx, 1])
 
