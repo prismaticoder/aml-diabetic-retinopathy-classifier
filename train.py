@@ -13,7 +13,7 @@ from typing import Dict, Any, Tuple
 
 # Configuration
 class TrainingConfig:
-    def __init__(self, batch_size: int = 32, learning_rate: float = 0.0001):
+    def __init__(self, batch_size: int = 32, learning_rate: float = 0.0001, user_name: str = ""):
         self.num_epochs = 10
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -21,6 +21,7 @@ class TrainingConfig:
         self.save_every = 2
         self.csv_path = "dataset/trainLabels.csv"
         self.img_dir = "dataset/train"
+        self.user_name = user_name
 
 def setup_directories(model_name: str, config: TrainingConfig) -> Tuple[str, str]:
     """Create necessary directories and return paths."""
@@ -30,16 +31,17 @@ def setup_directories(model_name: str, config: TrainingConfig) -> Tuple[str, str
     output_dir = f"output/{model_name}_lr{config.learning_rate}_bs{config.batch_size}"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Setup log directory
+    # Setup log directory with user name
     log_dir = "logs"
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"{model_name}_{timestamp}.json")
+    log_file = os.path.join(log_dir, f"{config.user_name.lower()}_{model_name}_{timestamp}.json")
     
     return output_dir, log_file
 
 def initialize_logging(model_name: str, config: TrainingConfig) -> Dict[str, Any]:
     """Initialize the logging dictionary with metadata."""
     return {
+        "user": config.user_name,
         "model_name": model_name,
         "hyperparameters": {
             "learning_rate": config.learning_rate,
@@ -189,6 +191,7 @@ def train_model(model_name: str, config: TrainingConfig):
         print(f"Training - Loss: {train_loss:.4f}, Accuracy: {train_accuracy:.2f}%")
         print(f"Validation - Loss: {val_loss:.4f}, Accuracy: {val_accuracy:.2f}%, QWK: {val_qwk:.4f}")
         print(f"📝 Log saved to: {log_file}")
+        print("--------------------------------")
         
         # Save checkpoint
         if epoch % config.save_every == 0:
@@ -224,6 +227,30 @@ def validate_batch_size(batch_str: str) -> int:
         return 32
 
 if __name__ == "__main__":
+    # Get user selection
+    print("Select your name: (Note: This will be used to identify your training results)")
+    print("1. Larry")
+    print("2. Meena")
+    print("3. Tom")
+    print("4. Zohaib")
+    print("5. Reviewer")
+    
+    user_map = {
+        "1": "Larry",
+        "2": "Meena",
+        "3": "Tom",
+        "4": "Zohaib",
+        "5": "Reviewer"
+    }
+    
+    while True:
+        user_choice = input("Enter your number (1-4): ").strip()
+        if user_choice in user_map:
+            user_name = user_map[user_choice]
+            print(f"\nHi {user_name}! Please choose your training parameters.")
+            break
+        print("Invalid choice. Please enter a number between 1 and 4.")
+
     # Get model input
     model_name = input("Enter model to train (e.g., resnet50, efficientnet_b0, vgg16, densenet121): ").strip().lower()
     
@@ -241,5 +268,9 @@ if __name__ == "__main__":
     print(f"Learning Rate: {learning_rate}")
     print("-------------------")
     
-    config = TrainingConfig(batch_size=batch_size, learning_rate=learning_rate)
+    config = TrainingConfig(
+        batch_size=batch_size, 
+        learning_rate=learning_rate,
+        user_name=user_name
+    )
     train_model(model_name, config)
