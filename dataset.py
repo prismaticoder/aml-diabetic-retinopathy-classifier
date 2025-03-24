@@ -58,9 +58,24 @@ val_transform = A.Compose([
     ToTensorV2()
 ])
 
-# 🚚 Updated function to use different transforms for train and val
 def get_data_loaders(csv_path, img_dir, batch_size=32, num_workers=1):
     # Create two separate datasets with different transforms
+    full_dataset = DiabeticRetinopathyDataset(
+        csv_file=csv_path, 
+        root_dir=img_dir, 
+        transform=None
+    )
+    
+    # Calculate split sizes
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    
+    # Generate indices for split
+    indices = torch.randperm(len(full_dataset))
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:]
+    
+    # Create train and val datasets with appropriate transforms
     train_dataset = DiabeticRetinopathyDataset(
         csv_file=csv_path, 
         root_dir=img_dir, 
@@ -72,20 +87,43 @@ def get_data_loaders(csv_path, img_dir, batch_size=32, num_workers=1):
         transform=val_transform
     )
     
-    # Calculate split sizes
-    train_size = int(0.8 * len(train_dataset))
-    val_size = len(train_dataset) - train_size
+    # Get labels for computing class weights
+    labels = [int(train_dataset.annotations.iloc[i, 1]) for i in train_indices]
     
-    # Generate indices for split
-    indices = torch.randperm(len(train_dataset))
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size:]
+    # Compute class weights
+    class_counts = torch.bincount(torch.tensor(labels))
+    total_samples = len(labels)
+    class_weights = total_samples / (len(class_counts) * class_counts.float())
+    
+    # Assign weight to each sample
+    sample_weights = [class_weights[label] for label in labels]
+    sample_weights = torch.DoubleTensor(sample_weights)
+    
+    # Create sampler for training data
+    sampler = torch.utils.data.WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(train_indices),
+        replacement=True
+    )
     
     # Create subset datasets
-    train_dataset = torch.utils.data.Subset(train_dataset, train_indices)
-    val_dataset = torch.utils.data.Subset(val_dataset, val_indices)
+    train_subset = torch.utils.data.Subset(train_dataset, train_indices)
+    val_subset = torch.utils.data.Subset(val_dataset, val_indices)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    # Use the sampler for training loader
+    train_loader = DataLoader(
+        train_subset, 
+        batch_size=batch_size,
+        sampler=sampler,  # Use weighted sampler instead of shuffle
+        num_workers=num_workers,
+        pin_memory=True
+    )
+    val_loader = DataLoader(
+        val_subset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
 
     return train_loader, val_loader
