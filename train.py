@@ -1,11 +1,12 @@
-# Import all the important libraries needed for model training
-import torch  # Core PyTorch library
-import torch.nn as nn  # Neural network modules
-import torch.optim as optim  # Optimizers like Adam, SGD
-import os  # File operations (creating directories etc.)
-from tqdm import tqdm  # Progress bar for training loop
-import torchvision.models as models  # Pre-trained models like ResNet, EfficientNet
-from dataset import get_data_loaders  # Function to load and preprocess your data
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import os
+from tqdm import tqdm
+import torchvision.models as models
+from dataset import get_data_loaders
+from sklearn.metrics import cohen_kappa_score
+import numpy as np
 
 # Set key training parameters
 num_epochs = 10  # How many times the model will see the entire dataset
@@ -57,10 +58,12 @@ def train_model(model_name):
 
     # 🌀 Start training loop
     for epoch in range(num_epochs):
-        model.train()  # Set model to training mode (enables dropout, batchnorm updates)
-        running_loss = 0.0  # Track cumulative loss for the epoch
-        correct = 0  # Count correct predictions
-        total = 0  # Total samples processed
+        model.train()
+        running_loss = 0.0
+        correct = 0
+        total = 0
+        all_preds = []
+        all_labels = []
 
         # Loop over batches
         for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - {model_name}"):
@@ -82,13 +85,25 @@ def train_model(model_name):
 
             # 📊 Update metrics
             running_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)  # Get class with highest probability
-            correct += (predicted == labels).sum().item()
+            _, predicted = torch.max(outputs, 1)
+            
+            # Calculate accuracy
             total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            
+            # Store predictions and labels for QWK calculation
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
 
-        # 🎉 Calculate accuracy for the epoch
-        train_acc = 100 * correct / total
-        print(f"✅ {model_name} - Epoch {epoch+1}, Loss: {running_loss:.4f}, Accuracy: {train_acc:.2f}%")
+        # Calculate accuracy and QWK score
+        accuracy = 100 * correct / total
+        qwk = cohen_kappa_score(
+            np.array(all_labels), 
+            np.array(all_preds), 
+            weights='quadratic'
+        )
+        
+        print(f"✅ {model_name} - Epoch {epoch+1}, Loss: {running_loss:.4f}, Accuracy: {accuracy:.2f}%, QWK: {qwk:.4f}")
 
         # 💾 Save model every 2 epochs
         if epoch % 2 == 0:
