@@ -18,7 +18,6 @@ output/
 
 # Ignore log files
 *.log
-logs/
 
 # Ignore system files
 .DS_Store
