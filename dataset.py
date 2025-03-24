@@ -19,6 +19,10 @@ class DiabeticRetinopathyDataset(Dataset):
         return len(self.annotations)
 
     def __getitem__(self, idx):
+        # Convert tensor index to integer if necessary
+        if torch.is_tensor(idx):
+            idx = idx.item()
+            
         img_path = os.path.join(self.root_dir, self.annotations.iloc[idx, 0] + ".png")
         image = Image.open(img_path).convert("RGB")
         label = int(self.annotations.iloc[idx, 1])
@@ -107,8 +111,8 @@ def get_data_loaders(csv_path, img_dir, batch_size=32, num_workers=1):
     )
     
     # Create subset datasets
-    train_subset = torch.utils.data.Subset(train_dataset, train_indices)
-    val_subset = torch.utils.data.Subset(val_dataset, val_indices)
+    train_subset = torch.utils.data.Subset(train_dataset, train_indices.tolist())
+    val_subset = torch.utils.data.Subset(val_dataset, val_indices.tolist())
 
     # Use the sampler for training loader
     train_loader = DataLoader(
