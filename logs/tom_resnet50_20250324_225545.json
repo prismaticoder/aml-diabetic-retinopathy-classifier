@@ -1,0 +1,134 @@
+{
+    "model_name": "resnet50",
+    "hyperparameters": {
+        "learning_rate": 0.0001,
+        "batch_size": 32,
+        "num_epochs": 10
+    },
+    "transforms": {
+        "train": "Compose([\n  Resize(p=1.0, height=224, width=224, interpolation=1, mask_interpolation=0),\n  HorizontalFlip(p=0.5),\n  VerticalFlip(p=0.5),\n  RandomBrightnessContrast(p=0.2, brightness_limit=(-0.2, 0.2), contrast_limit=(-0.2, 0.2), brightness_by_max=True, ensure_safe_range=False),\n  Normalize(p=1.0, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0, normalization='standard'),\n  ToTensorV2(p=1.0, transpose_mask=False),\n], p=1.0, bbox_params=None, keypoint_params=None, additional_targets={}, is_check_shapes=True)",
+        "validation": "Compose([\n  Resize(p=1.0, height=224, width=224, interpolation=1, mask_interpolation=0),\n  Normalize(p=1.0, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0, normalization='standard'),\n  ToTensorV2(p=1.0, transpose_mask=False),\n], p=1.0, bbox_params=None, keypoint_params=None, additional_targets={}, is_check_shapes=True)"
+    },
+    "epochs": [
+        {
+            "epoch": 1,
+            "training": {
+                "loss": 882.3958774209023,
+                "accuracy": 55.62277580071174
+            },
+            "validation": {
+                "loss": 241.7931730747223,
+                "accuracy": 49.758041559920294,
+                "qwk": 0.44267122549771576
+            }
+        },
+        {
+            "epoch": 2,
+            "training": {
+                "loss": 615.1187072098255,
+                "accuracy": 69.69039145907473
+            },
+            "validation": {
+                "loss": 250.28243321180344,
+                "accuracy": 47.46655280387134,
+                "qwk": 0.4408326322314824
+            }
+        },
+        {
+            "epoch": 3,
+            "training": {
+                "loss": 496.9726554006338,
+                "accuracy": 76.14946619217082
+            },
+            "validation": {
+                "loss": 186.22612509131432,
+                "accuracy": 68.30344434955879,
+                "qwk": 0.5704556138340151
+            }
+        },
+        {
+            "epoch": 4,
+            "training": {
+                "loss": 421.33431309461594,
+                "accuracy": 80.05338078291815
+            },
+            "validation": {
+                "loss": 206.7473719716072,
+                "accuracy": 62.86649587247367,
+                "qwk": 0.5332486522594444
+            }
+        },
+        {
+            "epoch": 5,
+            "training": {
+                "loss": 360.1181404069066,
+                "accuracy": 83.41281138790036
+            },
+            "validation": {
+                "loss": 231.5429943203926,
+                "accuracy": 59.06632507828067,
+                "qwk": 0.5330524549270437
+            }
+        },
+        {
+            "epoch": 6,
+            "training": {
+                "loss": 308.99748484790325,
+                "accuracy": 86.067615658363
+            },
+            "validation": {
+                "loss": 212.77888670563698,
+                "accuracy": 65.42840876743524,
+                "qwk": 0.5634881121864703
+            }
+        },
+        {
+            "epoch": 7,
+            "training": {
+                "loss": 266.5239010155201,
+                "accuracy": 88.36298932384342
+            },
+            "validation": {
+                "loss": 242.12464529275894,
+                "accuracy": 59.6356390549388,
+                "qwk": 0.5135809523339938
+            }
+        },
+        {
+            "epoch": 8,
+            "training": {
+                "loss": 248.72905972599983,
+                "accuracy": 89.15302491103203
+            },
+            "validation": {
+                "loss": 204.20633056759834,
+                "accuracy": 68.73042983205238,
+                "qwk": 0.569047448859618
+            }
+        },
+        {
+            "epoch": 9,
+            "training": {
+                "loss": 212.67387661710382,
+                "accuracy": 90.63701067615658
+            },
+            "validation": {
+                "loss": 192.27101415395737,
+                "accuracy": 73.89695417022487,
+                "qwk": 0.5857953194515494
+            }
+        },
+        {
+            "epoch": 10,
+            "training": {
+                "loss": 197.90441692620516,
+                "accuracy": 91.67615658362989
+            },
+            "validation": {
+                "loss": 209.74735659360886,
+                "accuracy": 73.32764019356675,
+                "qwk": 0.588464515419479
+            }
+        }
+    ]
+}
