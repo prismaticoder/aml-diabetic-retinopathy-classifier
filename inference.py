@@ -1,3 +1,4 @@
+# 📦 Import necessary libraries
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
@@ -5,12 +6,14 @@ import os
 import json
 import matplotlib.pyplot as plt
 import seaborn as sns
-from model import get_model
 import numpy as np
 import pandas as pd
+from model import get_model  # This function loads the model architecture
 
+# ✅ Choose whether to use GPU (if available) or CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# 🔖 Define the class labels for diabetic retinopathy severity
 severity_labels = {
     0: "No DR (Healthy)",
     1: "Mild DR",
@@ -19,62 +22,80 @@ severity_labels = {
     4: "Proliferative DR (Most Severe)"
 }
 
-# Function to load latest model checkpoint
+# 🧠 Load the most recent trained model (ResNet or EfficientNet) by name
 def load_latest_model(model_name):
     try:
-        # Extract base model name (handles underscores properly)
-        base_model_name = "_".join(model_name.split("_")[:-2])  # e.g., efficientnet_v2_s from efficientnet_v2_s_lr0.0001_bs32
+        # 👇 Extract base model name from something like "resnet50_lr0.0001_bs32"
+        base_model_name = model_name.split("_")[0]
 
-        model_dir = sorted(
-            [d for d in os.listdir("output") if d.startswith(model_name)],
-            reverse=True
-        )[0]
-        model_path = sorted(
-            [f for f in os.listdir(f"output/{model_dir}") if f.endswith(".pth")],
-            key=lambda f: os.path.getmtime(f"output/{model_dir}/{f}")
-        )[-1]
-        full_path = os.path.join("output", model_dir, model_path)
+        # 🔍 Look for a directory in 'output/' folder that starts with our model name
+        available_models = [
+            d for d in os.listdir("output")
+            if d.lower().startswith(model_name.lower())
+        ]
 
-        # Choose correct weights
-        if base_model_name.lower() == "resnet50":
-            weights = "ResNet50_Weights.IMAGENET1K_V1"
-        elif base_model_name.lower() == "efficientnet_v2_s":
-            weights = "EfficientNet_V2_S_Weights.IMAGENET1K_V1"
-        else:
-            weights = "DEFAULT"
+        if not available_models:
+            raise FileNotFoundError(f"❌ No trained model found for '{model_name}'!")
 
-        model = get_model(base_model_name.lower(), weights=weights).to(device)
-        checkpoint = torch.load(full_path, map_location=device)
+        # 📁 Pick the matched directory
+        model_dir = os.path.join("output", available_models[0])
 
-        # Load checkpoint robustly
-        if "model_state_dict" in checkpoint:
-            model.load_state_dict(checkpoint["model_state_dict"])
-        elif "state_dict" in checkpoint:
-            model.load_state_dict(checkpoint["state_dict"])
-        else:
+        # 📂 Find the most recently saved model weight file (.pth)
+        model_files = sorted(
+            [f for f in os.listdir(model_dir) if f.endswith(".pth")],
+            key=lambda x: os.path.getmtime(os.path.join(model_dir, x))
+        )
+
+        if not model_files:
+            raise FileNotFoundError("❌ No .pth model files found!")
+
+        # 📌 Path to the latest weight file
+        model_path = os.path.join(model_dir, model_files[-1])
+
+        # 🧠 Load the model architecture and weights
+        model = get_model(base_model_name.lower()).to(device)
+        checkpoint = torch.load(model_path, map_location=device)
+
+        # 🧽 Remove unnecessary wrappers (like 'state_dict' or 'module.')
+        if "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+        checkpoint = {k.replace("module.", ""): v for k, v in checkpoint.items()}
+
+        try:
             model.load_state_dict(checkpoint)
+        except RuntimeError:
+            print("⚠️ Warning: Weight mismatch, loading with strict=False")
+            model.load_state_dict(checkpoint, strict=False)
 
+        # 🧊 Freeze BatchNorm behavior during inference
         model.eval()
-        print(f"✅ Loaded model: {full_path}")
+        for module in model.modules():
+            if isinstance(module, torch.nn.BatchNorm2d):
+                module.track_running_stats = False
+                module.eval()
+
+        print(f"✅ Loaded model: {model_path}")
         return model
 
     except Exception as e:
         print(f"❌ Error loading model: {str(e)}")
-        raise
+        raise e
 
-# Image preprocessing
+
+# 🧹 Function to prepare a retina image for prediction
 def preprocess_image(image_path):
     transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        transforms.Resize((224, 224)),  # Make image size compatible with model input
+        transforms.ToTensor(),  # Convert image to tensor
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],  # Standard normalization
                              std=[0.229, 0.224, 0.225])
     ])
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image).unsqueeze(0)
+    image = Image.open(image_path).convert("RGB")  # Open image and convert to RGB
+    image = transform(image).unsqueeze(0)  # Add batch dimension [1, C, H, W]
     return image.to(device)
 
-# Main prediction function
+
+# 🔍 Function to run the model and return prediction info
 def predict(image_path, model_name):
     try:
         model = load_latest_model(model_name)
@@ -83,28 +104,28 @@ def predict(image_path, model_name):
 
     image = preprocess_image(image_path)
 
+    # 🚫 Disable gradient tracking (no training is done during prediction)
     with torch.no_grad():
-        output = model(image)
+        output = model(image)  # Forward pass through the model
         probabilities = torch.nn.functional.softmax(output, dim=1)[0]
-        predicted_class = torch.argmax(output, 1).item()
-        confidence = probabilities[predicted_class].item() * 100
+        predicted_class = torch.argmax(probabilities).item()
+        confidence = probabilities[predicted_class].item() * 100  # Confidence in %
 
-    # Bar chart
+    # 📊 Plot class probability bar chart
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.barplot(x=list(severity_labels.values()), y=probabilities.cpu().numpy(), ax=ax)
-    ax.set_title(f"Class Probabilities for {severity_labels[predicted_class]}")
-    ax.set_ylabel("Probability (%)")
-    ax.set_xlabel("Class")
+    ax.set_title(f"Predicted: {severity_labels[predicted_class]}")
+    ax.set_ylabel("Confidence (%)")
+    ax.set_xlabel("Severity Class")
     ax.set_xticklabels(severity_labels.values(), rotation=20)
     plt.tight_layout()
     plt_path = "probabilities_chart.png"
     plt.savefig(plt_path)
     plt.close()
 
-    # Example Confusion Matrix (Placeholder)
+    # 📘 Show dummy confusion matrix (this is for UI visualization only)
     confusion_matrix = np.random.randint(10, 100, size=(5, 5))
     df_cm = pd.DataFrame(confusion_matrix, index=severity_labels.values(), columns=severity_labels.values())
-
     plt.figure(figsize=(8, 6))
     sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
     plt.title("Confusion Matrix (Example)")
@@ -117,6 +138,7 @@ def predict(image_path, model_name):
     plt.savefig(conf_matrix_path)
     plt.close()
 
+    # 📦 Return results
     return {
         "severity": severity_labels[predicted_class],
         "confidence": round(confidence, 2),
@@ -124,15 +146,3 @@ def predict(image_path, model_name):
         "chart_path": plt_path,
         "conf_matrix_path": conf_matrix_path
     }
-
-# Local test (optional)
-if __name__ == "__main__":
-    model_name = "efficientnet_v2_s_lr0.0001_bs32"  # or "resnet50_lr0.0001_bs32"
-    test_image = "test_image.jpeg"
-    result = predict(test_image, model_name)
-
-    if "error" in result:
-        print(result["error"])
-    else:
-        print(f"Predicted Severity: {result['severity']} (Confidence: {result['confidence']}%)")
-        print("All probabilities:", json.dumps(result["probabilities"], indent=4))
