@@ -88,7 +88,7 @@ def get_data_loaders(csv_path, img_dir, batch_size=32, num_workers=1):
     )
     
     # Get labels for computing class weights
-    labels = [int(train_dataset.annotations.iloc[i, 1]) for i in train_indices]
+    labels = [int(full_dataset.annotations.iloc[i, 1]) for i in train_indices]
     
     # Compute class weights
     class_counts = torch.bincount(torch.tensor(labels))
