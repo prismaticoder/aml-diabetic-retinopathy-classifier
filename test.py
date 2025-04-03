@@ -14,7 +14,7 @@ import torch.nn as nn                                            # Neural networ
 # 🧠 Define testing configuration (you can tweak these)
 batch_size = 32
 learning_rate = 0.0001
-csv_path = "dataset/trainLabels.csv"     # Labels CSV
+csv_root_dir = "labels"     # Labels CSV
 img_dir = "dataset/train"                # Image folder
 output_dir = "output"                    # Where model weights and results are saved
 
@@ -67,7 +67,7 @@ def test_model(model_name):
     os.makedirs(test_results_dir, exist_ok=True)
 
     # Load validation set using same transformation and batch size as training
-    _, val_loader = get_data_loaders(csv_path, img_dir, batch_size=batch_size)
+    _, val_loader = get_data_loaders(csv_root_dir, img_dir, batch_size=batch_size)
 
     # Create empty lists to store results
     y_true, y_pred = [], []

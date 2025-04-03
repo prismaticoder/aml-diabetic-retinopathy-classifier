@@ -154,7 +154,7 @@ def train_model(model_name: str, config: TrainingConfig):
     
     # Get data loaders
     train_loader, val_loader = get_data_loaders(
-        config.csv_path, config.img_dir, 
+        "labels", config.img_dir, 
         batch_size=config.batch_size
     )
     
