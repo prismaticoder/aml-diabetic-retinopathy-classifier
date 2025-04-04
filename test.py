@@ -1,111 +1,118 @@
-import torch
-import os
+# test.py
+import argparse, os, torch, json
+import numpy as np
+from tqdm import tqdm
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import pandas as pd
-from sklearn.metrics import confusion_matrix, accuracy_score
-from dataset import get_data_loaders
-import torchvision.models as models
-from tqdm import tqdm
-import torch.nn as nn
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, cohen_kappa_score
+from dataset import DiabeticRetinopathyDataset, val_transform
+from model import get_model
+from torch.utils.data import DataLoader
+from datetime import datetime
 
-# Testing Parameters
-batch_size = 32
-learning_rate = 0.0001
-csv_path = "dataset/trainLabels.csv"
-img_dir = "dataset/train"
-output_dir = "output"
-
-def test_model(model_name):
-    """Function to test the model"""
-    
-    model_dir = os.path.join(output_dir, f"{model_name}_lr0.0001_bs{batch_size}")
-
-    # Check if trained model exists
-    if not os.path.exists(model_dir) or not any(f.endswith(".pth") for f in os.listdir(model_dir)):
-        print(f"❌ No trained model found for '{model_name}'! Please train the model first.")
-        return
-
-    # Find the latest trained model
-    model_files = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
-    model_files.sort()
-    model_path = os.path.join(model_dir, model_files[-1])
-    print(f"✅ Loaded Model: {model_path}")
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Load Model Dynamically with Correct Weights
-    model = getattr(models, model_name)(weights="DEFAULT")  # Use correct weights
-
-    # Modify last layer for 5 classes
-    if hasattr(model, "fc"):  # ResNet, DenseNet
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, 5)
-    elif hasattr(model, "classifier"):  # VGG, EfficientNet
-        num_ftrs = model.classifier[-1].in_features
-        model.classifier[-1] = nn.Linear(num_ftrs, 5)
-
-    model = model.to(device)  # Move model to device
-
-    # Load trained weights correctly
-    checkpoint = torch.load(model_path, map_location=device)
-    if "state_dict" in checkpoint:  # If saved as {'state_dict': model.state_dict()}
-        model.load_state_dict(checkpoint["state_dict"])
-    else:
-        model.load_state_dict(checkpoint)
-
+def evaluate(model, loader, device):
     model.eval()
-
-    test_results_dir = os.path.join(output_dir, "Test_Results", f"{model_name}_lr{learning_rate}_bs{batch_size}")
-    # test_results_dir = os.path.join(output_dir, "Test_Results", model_dir.split("/")[-1])
-
-    os.makedirs(test_results_dir, exist_ok=True)
-
-    _, val_loader = get_data_loaders(csv_path, img_dir, batch_size=batch_size)
-
-    y_true, y_pred = [], []
-    total_samples, correct_predictions = 0, 0
+    y_true, y_pred, y_probs = [], [], []
 
     with torch.no_grad():
-        for images, labels in tqdm(val_loader, desc=f"Testing {model_name}"):
-            images, labels = images.to(device), labels.to(device)
+        for images, labels in tqdm(loader, desc="Testing"):
+            images = images.to(device)
             outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(predicted.cpu().numpy())
-            correct_predictions += (predicted == labels).sum().item()
-            total_samples += labels.size(0)
+            probs = torch.softmax(outputs, dim=1)
+            preds = torch.argmax(probs, dim=1)
 
-    test_accuracy = accuracy_score(y_true, y_pred) * 100
-    print(f"\n🔥 {model_name} - Final Test Accuracy: {test_accuracy:.2f}% 🔥")
+            y_true.extend(labels.numpy())
+            y_pred.extend(preds.cpu().numpy())
+            y_probs.extend(probs.cpu().numpy())
 
+    precision = precision_score(y_true, y_pred, average="macro")
+    recall = recall_score(y_true, y_pred, average="macro")
+    f1 = f1_score(y_true, y_pred, average="macro")
+    try:
+        auc = roc_auc_score(y_true, y_probs, multi_class="ovr")
+    except:
+        auc = -1
+    qwk = cohen_kappa_score(y_true, y_pred, weights="quadratic")
+    return y_true, y_pred, precision, recall, f1, auc, qwk
+
+def save_artifacts(y_true, y_pred, user, model, batch_size, lr, precision, recall, f1, auc, qwk):
+    folder = f"output/Test_Results/{model}_lr{lr}_bs{batch_size}"
+    os.makedirs(folder, exist_ok=True)
+
+    # Save Confusion Matrix
     cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(8,6))
     sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
     plt.xlabel("Predicted")
     plt.ylabel("True")
-    plt.title(f"Confusion Matrix - {model_name}")
+    plt.title(f"{model} - Confusion Matrix")
+    plt.tight_layout()
+    plt.savefig(os.path.join(folder, "confusion_matrix.png"))
+    plt.close()
 
- # Save test summary
-    summary_path = os.path.join(test_results_dir, "test_summary.txt")
+    # Save Predictions
+    df = pd.DataFrame({
+        "True Label": y_true,
+        "Predicted Label": y_pred
+    })
+    df.to_csv(os.path.join(folder, "predictions.csv"), index=False)
+
+    # Save Summary
+    summary_path = os.path.join(folder, "test_summary.txt")
     with open(summary_path, "w") as f:
-        f.write(f"Model: {model_name}\n")
-        f.write(f"Total Samples: {total_samples}\n")
-        f.write(f"Batch Size: {batch_size}\n")
-        f.write(f"Final Test Accuracy: {test_accuracy:.2f}%\n")
-    print(f"✅ Test summary saved at: {summary_path}")
+        f.write(f"User: {user}\nModel: {model}\nBatch Size: {batch_size}\nLearning Rate: {lr}\n\n")
+        f.write("📊 Evaluation Metrics:\n")
+        f.write(f"Precision: {precision:.4f}\n")
+        f.write(f"Recall: {recall:.4f}\n")
+        f.write(f"F1 Score: {f1:.4f}\n")
+        f.write(f"ROC AUC: {auc:.4f}\n")
+        f.write(f"QWK: {qwk:.4f}\n")
 
- # Save predictions CSV
-    predictions_df = pd.DataFrame({"True Label": y_true, "Predicted Label": y_pred})
-    predictions_csv_path = os.path.join(test_results_dir, "predictions.csv")
-    predictions_df.to_csv(predictions_csv_path, index=False)
-    print(f"✅ Predictions saved at: {predictions_csv_path}")
-
-    # Save confusion matrix image
-    cm_path = os.path.join(test_results_dir, "confusion_matrix.png")
-    plt.savefig(cm_path)
-    print(f"✅ Confusion Matrix saved at: {cm_path}")
+def save_log(log_data, user, model, run_type, batch_size, lr):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f"logs/{user}_{model}_{timestamp}_{run_type}_{batch_size}_{lr}.json"
+    os.makedirs("logs", exist_ok=True)
+    with open(log_file, "w") as f:
+        json.dump(log_data, f, indent=4)
+    print(f"✅ Log saved to {log_file}")
 
 if __name__ == "__main__":
-    model_name = input("Enter the model to test (e.g., resnet50, efficientnet_b0, vgg16, densenet121): ").strip().lower()
-    test_model(model_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--user", required=True)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=0.0001)
+    parser.add_argument("--csv_file", required=True)
+    parser.add_argument("--img_dir", required=True)
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = get_model(args.model.lower(), pretrained=False).to(device)
+
+    # Load best model checkpoint
+    model_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    pths = sorted([f for f in os.listdir(model_dir) if f.endswith(".pth")])
+    checkpoint = torch.load(os.path.join(model_dir, pths[-1]), map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    dataset = DiabeticRetinopathyDataset(args.csv_file, args.img_dir, transform=val_transform)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
+
+    y_true, y_pred, precision, recall, f1, auc, qwk = evaluate(model, loader, device)
+
+    save_artifacts(y_true, y_pred, args.user, args.model, args.batch_size, args.learning_rate,
+                   precision, recall, f1, auc, qwk)
+
+    log_data = {
+        "user": args.user,
+        "model": args.model,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1,
+        "roc_auc": auc,
+        "qwk": qwk
+    }
+    save_log(log_data, args.user, args.model, "test", args.batch_size, args.learning_rate)

@@ -1,78 +1,113 @@
+# train.py
+import argparse, os, json
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import os
 from tqdm import tqdm
-import torchvision.models as models
+import numpy as np
+from datetime import datetime
+from sklearn.metrics import cohen_kappa_score
 from dataset import get_data_loaders
+from model import get_model
 
-# Training Parameters
-num_epochs = 10
-batch_size = 32
-learning_rate = 0.0001
+def train_epoch(model, loader, criterion, optimizer, device):
+    model.train()
+    total_loss, correct, total = 0.0, 0, 0
+    for images, labels in tqdm(loader, desc="Training"):
+        images, labels = images.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
 
-def train_model(model_name):
-    """Function to train the model"""
-    
-    # Check if model exists in torchvision
-    if not hasattr(models, model_name):
-        raise ValueError(f"❌ Model '{model_name}' not found in torchvision!")
+        total_loss += loss.item()
+        _, preds = torch.max(outputs, 1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
 
-    csv_path = "dataset/trainLabels.csv"
-    img_dir = "dataset/train"
-    train_loader, val_loader = get_data_loaders(csv_path, img_dir, batch_size=batch_size)
+    acc = 100 * correct / total
+    return total_loss, acc
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"🔹 Training {model_name}...")
-
-    # Load Model Dynamically with Correct Weights
-    model = getattr(models, model_name)(weights="DEFAULT")  # Updated to avoid deprecation warning
-
-    # Modify last layer for 5 classes
-    if hasattr(model, "fc"):  # ResNet, DenseNet
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, 5)
-    elif hasattr(model, "classifier"):  # VGG, EfficientNet
-        num_ftrs = model.classifier[-1].in_features
-        model.classifier[-1] = nn.Linear(num_ftrs, 5)
-
-    model = model.to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
-    output_dir = f"output/{model_name}_lr{learning_rate}_bs{batch_size}"
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Training Loop
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss, correct, total = 0.0, 0, 0
-
-        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - {model_name}"):
+def validate(model, loader, criterion, device):
+    model.eval()
+    total_loss, correct, total = 0.0, 0, 0
+    preds, targets = [], []
+    with torch.no_grad():
+        for images, labels in tqdm(loader, desc="Validating"):
             images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            total_loss += loss.item()
 
-            running_loss += loss.item()
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == labels).sum().item()
+            _, pred = torch.max(outputs, 1)
+            preds.extend(pred.cpu().numpy())
+            targets.extend(labels.cpu().numpy())
+            correct += (pred == labels).sum().item()
             total += labels.size(0)
 
-        train_acc = 100 * correct / total
-        print(f"✅ {model_name} - Epoch {epoch+1}, Loss: {running_loss:.4f}, Accuracy: {train_acc:.2f}%")
+    acc = 100 * correct / total
+    qwk = cohen_kappa_score(targets, preds, weights="quadratic")
+    return total_loss, acc, qwk
 
-        # Save Model Every 2 Epochs
-        if epoch % 2 == 0:
-            model_filename = f"{output_dir}/{model_name}_epoch{epoch+1}.pth"
-            torch.save({'state_dict': model.state_dict()}, model_filename)
-            print(f"✅ Model saved: {model_filename}")
+def save_checkpoint(model, model_dir, model_name, epoch):
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"{model_name}_epoch{epoch}.pth")
+    torch.save({"model_state_dict": model.state_dict()}, model_path)
+    print(f"💾 Saved model: {model_path}")
+
+def save_log(log, user, model_name, run_type, batch_size, lr):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = f"logs/{user}_{model_name}_{timestamp}_{run_type}_{batch_size}_{lr}.json"
+    os.makedirs("logs", exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(log, f, indent=4)
+    print(f"📄 Log saved to {path}")
 
 if __name__ == "__main__":
-    # Take input only once
-    model_name = input("Enter model to train (e.g., resnet50, efficientnet_b0, vgg16, densenet121): ").strip().lower()
-    
-    # Start training
-    train_model(model_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--user", required=True)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--csv_root_dir", required=True)
+    parser.add_argument("--img_dir", required=True)
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = get_model(args.model.lower(), pretrained=True).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    criterion = nn.CrossEntropyLoss()
+
+    train_loader, val_loader = get_data_loaders(args.csv_root_dir, args.img_dir, args.batch_size)
+
+    model_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    log_data = {
+        "user": args.user,
+        "model": args.model,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "epochs": []
+    }
+
+    for epoch in range(1, 11):
+        print(f"\n🔁 Epoch {epoch}/10")
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc, val_qwk = validate(model, val_loader, criterion, device)
+
+        print(f"📊 Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
+        print(f"📊 Val Loss:   {val_loss:.4f} | Val Acc: {val_acc:.2f}% | QWK: {val_qwk:.4f}")
+
+        log_data["epochs"].append({
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "train_acc": train_acc,
+            "val_loss": val_loss,
+            "val_acc": val_acc,
+            "val_qwk": val_qwk
+        })
+
+        if epoch % 2 == 1:
+            save_checkpoint(model, model_dir, args.model, epoch)
+
+    save_log(log_data, args.user, args.model, "train", args.batch_size, args.learning_rate)

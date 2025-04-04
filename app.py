@@ -19,7 +19,12 @@ if not trained_models:
     st.stop()
 
 # Model selection
-selected_model = st.sidebar.selectbox("Select Model", trained_models)
+if trained_models:
+    selected_model = st.sidebar.selectbox("Select Model", trained_models)
+else:
+    st.error("❌ No trained models found in the output directory.")
+    st.stop()
+
 
 # Define model's test result path
 model_test_dir = os.path.join(test_results_dir, selected_model)
