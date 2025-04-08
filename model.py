@@ -8,7 +8,7 @@ from torchvision.models import (
     resnet50, ResNet50_Weights,
 )
 
-def get_model(model_name, pretrained=False):
+def get_model(model_name, weights=None):
     model_name = model_name.lower().strip()
 
     # Supported model mappings (add aliases here)
@@ -29,7 +29,10 @@ def get_model(model_name, pretrained=False):
         raise ValueError(f"❌ '{corrected_model_name}' model can’t be loaded from torchvision!")
 
     # Load pretrained weights if needed
-    model = model_class(pretrained=pretrained)
+    if weights is None:
+        weights = getattr(models, f"{corrected_model_name.upper()}_Weights").DEFAULT  # Load the default weights
+
+    model = model_class(weights=weights)
 
     # Replace final classification layer
     if hasattr(model, "fc"):
@@ -42,4 +45,3 @@ def get_model(model_name, pretrained=False):
         raise ValueError(f"❌ Cannot modify output layer for model '{corrected_model_name}'")
 
     return model
-

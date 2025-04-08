@@ -19,12 +19,7 @@ if not trained_models:
     st.stop()
 
 # Model selection
-if trained_models:
-    selected_model = st.sidebar.selectbox("Select Model", trained_models)
-else:
-    st.error("❌ No trained models found in the output directory.")
-    st.stop()
-
+selected_model = st.sidebar.selectbox("Select Model", trained_models)
 
 # Define model's test result path
 model_test_dir = os.path.join(test_results_dir, selected_model)
@@ -34,20 +29,14 @@ st.sidebar.header("📊 Model Details")
 
 # Load test summary details
 summary_path = os.path.join(model_test_dir, "test_summary.txt")
-
 if os.path.exists(summary_path):
     with open(summary_path, "r") as f:
         summary_lines = f.readlines()
-    
-    # Filter out lines that mention paths to confusion matrix & predictions CSV
-    filtered_lines = [
-        line.strip() for line in summary_lines 
-        if "Confusion Matrix saved at:" not in line and "Predictions CSV saved at:" not in line
-    ]
 
-    # Display filtered information
-    for line in filtered_lines:
-        st.sidebar.write(line)
+    for line in summary_lines:
+        if "Precision" in line:
+            st.sidebar.subheader("📉 Evaluation Metrics:")
+        st.sidebar.write(line.strip())
 
 # Load Confusion Matrix if available
 conf_matrix_path = os.path.join(model_test_dir, "confusion_matrix.png")
@@ -56,15 +45,16 @@ if os.path.exists(conf_matrix_path):
 
 # Load Predictions Log if available
 predictions_path = os.path.join(model_test_dir, "predictions.csv")
-
 if os.path.exists(predictions_path):
     st.sidebar.subheader("📊 Model Performance Breakdown")
 
     df = pd.read_csv(predictions_path)
-    
-    # Compute overall accuracy
-    accuracy = (df["True Label"] == df["Predicted Label"]).mean() * 100
 
+    # Rename columns for UI display
+    df_display = df.rename(columns={"actual": "True Label", "predicted": "Predicted Label"})
+
+    # Compute overall accuracy
+    accuracy = (df["actual"] == df["predicted"]).mean() * 100
 
     # KPI Metric Display
     st.sidebar.metric(label="📊 Test Set Accuracy", value=f"{accuracy:.2f}%")
@@ -74,13 +64,16 @@ if os.path.exists(predictions_path):
     st.sidebar.progress(accuracy / 100)
 
     # Compute misclassification summary
-    misclassifications = df[df["True Label"] != df["Predicted Label"]]
-    most_common_mistakes = misclassifications.groupby(["True Label", "Predicted Label"]).size().reset_index(name="Count")
+    misclassifications = df[df["actual"] != df["predicted"]]
+    most_common_mistakes = misclassifications.groupby(["actual", "predicted"]).size().reset_index(name="Count")
 
-    # Show top misclassifications
     if not most_common_mistakes.empty:
         st.sidebar.write("🔄 **Most Common Misclassifications:**")
-        st.sidebar.dataframe(most_common_mistakes.sort_values("Count", ascending=False).head(5))
+        st.sidebar.dataframe(
+            most_common_mistakes.sort_values("Count", ascending=False).head(5).rename(
+                columns={"actual": "True Label", "predicted": "Predicted Label"}
+            )
+        )
 
 st.title("🩺 Diabetic Retinopathy Detection AI")
 
@@ -97,19 +90,12 @@ if uploaded_file:
     image.save(temp_path)
 
     if st.button("🔍 Analyze Image"):
-       result = predict(temp_path, selected_model)  # Make sure result is inside the button block
+        result = predict(temp_path, selected_model)
 
-       if "error" in result:
-        st.error(result["error"])
-       else:
-        st.subheader(f"🩺 **Diagnosis: {result['severity']}**")
-        st.write(f"📊 **Confidence:** {result['confidence']}%")
-        
-        # Show Class Probability Chart
-        st.image(result["chart_path"], caption="Class Probabilities", use_container_width=True)
-
-        # Show Confusion Matrix
-        st.image(result["conf_matrix_path"], caption="Confusion Matrix", use_container_width=True)
-
-
-
+        if "error" in result:
+            st.error(result["error"])
+        else:
+            st.subheader(f"🩺 **Diagnosis: {result['severity']}**")
+            st.write(f"📊 **Confidence:** {result['confidence']}%")
+            st.image(result["chart_path"], caption="Class Probabilities", use_container_width=True)
+            st.image(result["conf_matrix_path"], caption="Confusion Matrix", use_container_width=True)
