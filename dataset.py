@@ -41,7 +41,13 @@ val_transform = A.Compose([
     ToTensorV2()
 ])
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1):
+def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1, only_test=False):
+    if only_test:
+        test_csv_path = os.path.join(csv_root_dir, "test.csv")
+        test_dataset = DiabeticRetinopathyDataset(test_csv_path, img_dir, val_transform)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        return test_loader
+
     train_csv_path = os.path.join(csv_root_dir, "train.csv")
     val_csv_path = os.path.join(csv_root_dir, "val.csv")
     
