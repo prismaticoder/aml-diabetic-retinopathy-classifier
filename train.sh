@@ -6,8 +6,8 @@ STUDENT_NAME="Meenakshy Prem"
 
 # Set model-specific variables
 MODEL_NAME="swin_v2_b"
-LEARNING_RATE="0.0005"
-BATCH_SIZE="16"
+LEARNING_RATE="0.0001"
+BATCH_SIZE="32"
 
 # Dynamically assign the weights based on model name
 if [ "$MODEL_NAME" == "efficientnet_v2_s" ]; then
@@ -34,10 +34,10 @@ python3 train.py \
 --optim "adam" \
 --lr_scheduler "ReduceLROnPlateau" \
 --seed 42 \
---brightness 0.4 \
---contrast 0.4 \
---saturation 0.4 \
---hue 0.1 \
+--brightness 0.2 \
+--contrast 0.2 \
+--saturation 0.2 \
+--hue 0.2 \
 --resized_img_weight 192 \
 --resized_img_height 192 \
 --train_datacsv "dataset/train.csv" \

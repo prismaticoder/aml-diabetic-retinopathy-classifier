@@ -6,8 +6,8 @@ STUDENT_NAME="Meenakshy Prem"
 
 # Set model-specific variables
 MODEL_NAME="swin_v2_b"
-LEARNING_RATE="0.0005"
-BATCH_SIZE="16"
+LEARNING_RATE="0.0001"
+BATCH_SIZE="32"
 
 # Dynamically assign the weights based on model name
 if [ "$MODEL_NAME" == "efficientnet_v2_s" ]; then
