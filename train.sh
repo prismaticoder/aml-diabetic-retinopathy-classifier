@@ -6,7 +6,7 @@ STUDENT_NAME="Meenakshy Prem"
 
 # Set model-specific variables
 MODEL_NAME="swin_v2_b"
-LEARNING_RATE="0.0001"
+LEARNING_RATE="0.0005"
 BATCH_SIZE="32"
 
 # Dynamically assign the weights based on model name
@@ -34,10 +34,10 @@ python3 train.py \
 --optim "adam" \
 --lr_scheduler "ReduceLROnPlateau" \
 --seed 42 \
---brightness 0.2 \
---contrast 0.2 \
---saturation 0.2 \
---hue 0.2 \
+--brightness 0.3 \
+--contrast 0.3 \
+--saturation 0.3 \
+--hue 0.3 \
 --resized_img_weight 192 \
 --resized_img_height 192 \
 --train_datacsv "dataset/train.csv" \
