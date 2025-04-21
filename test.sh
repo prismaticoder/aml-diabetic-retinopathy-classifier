@@ -6,7 +6,7 @@ STUDENT_NAME="Meenakshy Prem"
 
 # Set model-specific variables
 MODEL_NAME="swin_v2_b"
-LEARNING_RATE="0.0001"
+LEARNING_RATE="0.0005"
 BATCH_SIZE="16"
 
 # Dynamically assign the weights based on model name
