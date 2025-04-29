@@ -1,32 +1,18 @@
 #!/bin/bash
 
-# Set student information
-STUDENT_ID=6891120 
-STUDENT_NAME="Zohaib Shaikh"
+STUDENT_ID=6896375
+STUDENT_NAME="Lawrence Attoh"
+MODEL_NAME="mlp_mixer"
+LEARNING_RATE="0.003"
+BATCH_SIZE="16"
+WEIGHTS="DEFAULT"
 
-# Set model-specific variables
-MODEL_NAME="efficientnet_v2_s"
-LEARNING_RATE="0.0001"
-BATCH_SIZE="32"
-
-# Dynamically assign the weights based on model name
-if [ "$MODEL_NAME" == "efficientnet_v2_s" ]; then
-  WEIGHTS="EfficientNet_V2_S_Weights.IMAGENET1K_V1"
-elif [ "$MODEL_NAME" == "resnet50" ]; then
-  WEIGHTS="ResNet50_Weights.IMAGENET1K_V1"
-else
-  WEIGHTS="DEFAULT"
-fi
-
-# Define checkpoint model path dynamically based on model name, learning rate, and batch size
 CHECKPOINT_DIR="output/${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
-CHECKPOINT_PATH=$(ls -t ${CHECKPOINT_DIR}/*.pth | head -n 1)  # Get the latest .pth file
+CHECKPOINT_PATH=$(ls -t ${CHECKPOINT_DIR}/*.pth | head -n 1)
 
-# Build Confusion Matrix Title based on model name
 CONF_MATRIX_TITLE="Confusion Matrix for $(echo ${MODEL_NAME} | tr '_' ' ' | sed 's/\b\(.\)/\u\1/g')"
 
-# Run the test script
-python test.py \
+python3 test.py \
 --model $MODEL_NAME \
 --user "$STUDENT_NAME" \
 --batch_size $BATCH_SIZE \

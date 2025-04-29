@@ -1,28 +1,21 @@
 #!/bin/bash
 
-# Set student information
-STUDENT_ID=6891120 
-STUDENT_NAME="Zohaib Shaikh"
+# Set student info
+export STUDENT_ID=6896375 
+export STUDENT_NAME="Lawrence Attoh"
 
-# Set model-specific variables
-MODEL_NAME="efficientnet_v2_s"
-LEARNING_RATE="0.0001"
-BATCH_SIZE="32"
+# MLP-Mixer model training setup
+export MODEL_NAME="mlp_mixer"
+export LEARNING_RATE="0.0001"
+export BATCH_SIZE="64"
+export CHECKPOINT_PATH="mlp_mixer_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
+export WEIGHTS="DEFAULT"
 
-# Dynamically assign the weights based on model name
-if [ "$MODEL_NAME" == "efficientnet_v2_s" ]; then
-  WEIGHTS="EfficientNet_V2_S_Weights.IMAGENET1K_V1"
-elif [ "$MODEL_NAME" == "resnet50" ]; then
-  WEIGHTS="ResNet50_Weights.IMAGENET1K_V1"
-else
-  WEIGHTS="DEFAULT"
-fi
+# Activate your virtual environment (optional: only if needed)
+# source venv/bin/activate
 
-# Define checkpoint model path dynamically based on model name, learning rate, and batch size
-CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
-
-# Python command to run the training
-python train.py \
+# Run training
+python3 train.py \
 --model $MODEL_NAME \
 --user "$STUDENT_NAME" \
 --batch_size $BATCH_SIZE \
@@ -34,10 +27,10 @@ python train.py \
 --optim "adam" \
 --lr_scheduler "CosineAnnealingLR" \
 --seed 42 \
---brightness 0.2 \
---contrast 0.2 \
---saturation 0.2 \
---hue 0.2 \
+--brightness 0.5 \
+--contrast 0.5 \
+--saturation 0.5 \
+--hue 0.5 \
 --resized_img_weight 224 \
 --resized_img_height 224 \
 --train_datacsv "dataset/train.csv" \

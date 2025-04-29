@@ -11,7 +11,7 @@ from dataset import get_data_loaders
 from model import get_model
 
 console = Console()
-STUDENT_ID = "6891120"
+STUDENT_ID = "6896375"
 
 def format_hms(seconds):
     h = int(seconds) // 3600

@@ -1,128 +1,83 @@
-import argparse, os, json, time, torch
+import argparse, os, json, time
+import torch
 import torch.nn as nn
-from rich.console import Console
-from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
-from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.metrics import cohen_kappa_score, confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score, roc_auc_score
+import seaborn as sns
+from sklearn.metrics import classification_report, confusion_matrix, cohen_kappa_score, precision_score, recall_score, f1_score, roc_auc_score
+from rich.console import Console
 from dataset import get_data_loaders
 from model import get_model
 
 console = Console()
-STUDENT_ID = "6891120"
+SEVERITY_LABELS = ["No DR", "Mild", "Moderate", "Severe", "Proliferative DR"]
 
-def format_hms(seconds):
-    h = int(seconds) // 3600
-    m = (int(seconds) % 3600) // 60
-    s = int(seconds) % 60
-    return f"{h:02d}:{m:02d}:{s:02d}"
+def plot_confusion_matrix(y_true, y_pred, class_names, save_path, title):
+    cm = confusion_matrix(y_true, y_pred)
+    df_cm = pd.DataFrame(cm, index=class_names, columns=class_names)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(df_cm, annot=True, fmt="d", cmap="Blues")
+    plt.title(title)
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    console.print(f"📊 Confusion matrix saved to: [green]{save_path}[/green]")
 
-def get_gpu_info():
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_name(torch.cuda.current_device())
-    return "CPU"
-
-def validate(model, loader, criterion, device):
+def evaluate(model, loader, device):
     model.eval()
-    total_loss, correct, total = 0.0, 0, 0
-    preds, targets, filenames = [], [], []
-
-    with torch.no_grad(), Progress(
-        SpinnerColumn(),
-        TextColumn("[bold blue]Evaluating"),
-        BarColumn(),
-        "[progress.percentage]{task.percentage:>3.1f}%",
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task_id = progress.add_task("[cyan]Running...", total=len(loader))
-
-        for batch in loader:
-            if len(batch) == 2:
-                images, labels = batch
-                fnames = ["unknown"] * len(labels)
-            elif len(batch) == 3:
-                images, labels, fnames = batch
-            else:
-                raise ValueError("Unexpected number of elements returned from test loader.")
-
+    all_preds, all_targets = [], []
+    with torch.no_grad():
+        for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            loss = criterion(outputs, labels)
-            total_loss += loss.item()
+            _, preds = torch.max(outputs, 1)
+            all_preds.extend(preds.cpu().numpy())
+            all_targets.extend(labels.cpu().numpy())
 
-            _, pred = torch.max(outputs, 1)
-            preds.extend(pred.cpu().numpy())
-            targets.extend(labels.cpu().numpy())
-            filenames.extend(fnames)
-            correct += (pred == labels).sum().item()
-            total += labels.size(0)
+    return all_preds, all_targets
 
-            progress.update(task_id, advance=1)
+def format_metrics(y_true, y_pred):
+    precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
+    recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
+    f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+    qwk = cohen_kappa_score(y_true, y_pred, weights="quadratic")
 
-    acc = 100 * correct / total
-    qwk = cohen_kappa_score(targets, preds, weights="quadratic")
-    return total_loss, acc, qwk, preds, targets, filenames
-
-def save_log(log, student_name, model_name, run_type, batch_size, lr):
-    student_name = student_name.replace(" ", "_")
-    log_file_name = f"logs/{student_name}_ID{STUDENT_ID}_{model_name}_{run_type}_{batch_size}_{lr}.json"
-    os.makedirs("logs", exist_ok=True)
-    with open(log_file_name, "w") as f:
-        json.dump(log, f, indent=4)
-    console.print(f"📄 Log saved to {log_file_name}", style="bold cyan")
-
-def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title,
-                 user, student_id, start_clock, end_clock, gpu_name, total_eval_time):
-    save_dir = f"output/Test_Results/{model_name}_lr{lr}_bs{bs}"
-    os.makedirs(save_dir, exist_ok=True)
-
-    # Save predictions
-    df = pd.DataFrame({"filename": filenames, "actual": targets, "predicted": preds})
-    df.to_csv(os.path.join(save_dir, "predictions.csv"), index=False)
-
-    # Confusion matrix
-    cm = confusion_matrix(targets, preds)
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
-    disp.plot(cmap='Blues')
-    plt.title(cm_title)
-    plt.savefig(os.path.join(save_dir, "confusion_matrix.png"))
-    plt.close()
-
-    # Test summary
-    precision = precision_score(targets, preds, average='weighted', zero_division=0)
-    recall = recall_score(targets, preds, average='weighted', zero_division=0)
-    f1 = f1_score(targets, preds, average='weighted', zero_division=0)
     try:
-        roc = roc_auc_score(targets, preds, multi_class='ovr')
-    except:
-        roc = 0.0
-    qwk = cohen_kappa_score(targets, preds, weights="quadratic")
+        auc = roc_auc_score(
+            pd.get_dummies(y_true, drop_first=False),
+            pd.get_dummies(y_pred, drop_first=False),
+            average="weighted",
+            multi_class="ovr"
+        )
+    except Exception:
+        auc = None
 
-    summary = f"""
-👤 User: {user}
-🎓 Student ID: {student_id}
-🧠 Model: {model_name}
-📦 Batch Size: {bs}
-🚀 Learning Rate: {lr}
-🕐 Evaluation Start: {start_clock}
-🏁 Evaluation End: {end_clock}
-💻 Device: {gpu_name}
-⏱️ Evaluation Duration: {total_eval_time}
+    return {
+        "precision": round(precision * 100, 2),
+        "recall": round(recall * 100, 2),
+        "f1": round(f1 * 100, 2),
+        "qwk": round(qwk, 4),
+        "roc_auc": round(auc, 4) if auc else "N/A"
+    }
 
-• Precision: {precision:.4f}
-• Recall:    {recall:.4f}
-• F1 Score:  {f1:.4f}
-• ROC AUC:   {roc:.4f}
-• QWK:       {qwk:.4f}
-""".strip()
+def save_predictions(y_true, y_pred, save_path):
+    df = pd.DataFrame({"actual": y_true, "predicted": y_pred})
+    df.to_csv(save_path, index=False)
+    console.print(f"📄 Predictions saved to: [cyan]{save_path}[/cyan]")
 
-    with open(os.path.join(save_dir, "test_summary.txt"), "w") as f:
-        f.write(summary)
-
-    console.print(f"📝 Test summary saved to: {save_dir}/test_summary.txt", style="bold cyan")
+def save_summary(metrics, save_path, args):
+    with open(save_path, "w") as f:
+        f.write(f"Model: {args.model}\n")
+        f.write(f"User: {args.user}\n")
+        f.write(f"Batch Size: {args.batch_size}\n")
+        f.write(f"Learning Rate: {args.learning_rate}\n")
+        f.write("\n=== Evaluation Metrics ===\n")
+        for k, v in metrics.items():
+            f.write(f"{k.upper()}: {v}\n")
+    console.print(f"📘 Summary saved to: [magenta]{save_path}[/magenta]")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -132,62 +87,50 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--csv_root_dir", required=True)
     parser.add_argument("--img_dir", required=True)
-    parser.add_argument("--n_classes", type=int, default=5)
-    parser.add_argument("--optim", type=str, default="adam")
-    parser.add_argument("--lr_scheduler", type=str, default="CosineAnnealingLR")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--resized_img_weight", type=int, default=224)
-    parser.add_argument("--resized_img_height", type=int, default=224)
     parser.add_argument("--train_datacsv", required=True)
     parser.add_argument("--val_datacsv", required=True)
     parser.add_argument("--test_datacsv", required=True)
     parser.add_argument("--saved_checkpoint_path", required=True)
     parser.add_argument("--log_dir", required=True)
     parser.add_argument("--weights", type=str, default="DEFAULT")
-    parser.add_argument("--evaluate_only", action="store_true")
     parser.add_argument("--confusion_matrix_title", type=str, default="Confusion Matrix")
+    parser.add_argument("--n_classes", type=int, default=5)
+    parser.add_argument("--resized_img_weight", type=int, default=224)
+    parser.add_argument("--resized_img_height", type=int, default=224)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--evaluate_only", action="store_true")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    gpu_name = get_gpu_info()
-    start_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-    console.print(f"\n🚀 Evaluation started at [bold yellow]{start_clock}[/bold yellow] on [bold green]{gpu_name}[/bold green]")
-
-    start_time = time.time()
     model = get_model(args.model.lower(), weights=args.weights).to(device)
+
     checkpoint = torch.load(args.saved_checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint.get("model_state_dict", checkpoint))
+    console.print(f"✅ Loaded checkpoint from: [green]{args.saved_checkpoint_path}[/green]")
 
-    criterion = nn.CrossEntropyLoss()
-    from test_dataset import get_test_loader
-    test_loader = get_test_loader(args.test_datacsv, args.img_dir, args.batch_size)
+    _, _, test_loader = get_data_loaders(
+        args.csv_root_dir, args.img_dir, args.batch_size,
+        args.train_datacsv, args.val_datacsv, args.test_datacsv,
+        resized_height=args.resized_img_height,
+        resized_width=args.resized_img_weight
+    )
 
-    total_loss, accuracy, qwk, preds, targets, filenames = validate(model, test_loader, criterion, device)
+    console.rule(f"🧪 [bold blue]Evaluating {args.model.upper()} on Test Set[/bold blue]")
+    start = time.time()
+    y_pred, y_true = evaluate(model, test_loader, device)
+    duration = round(time.time() - start, 2)
+    console.print(f"⏱️ Evaluation time: {duration}s")
 
-    end_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-    total_eval_time = format_hms(time.time() - start_time)
+    metrics = format_metrics(y_true, y_pred)
 
-    console.print(f"\n📈 [bold green]Evaluation Results:[/bold green] "
-                  f"Loss = {total_loss:.4f}, Accuracy = {accuracy:.2f}%, QWK = {qwk:.4f}")
-    console.print(f"🏁 Evaluation ended at [bold yellow]{end_clock}[/bold yellow]")
-    console.print(f"⏱️ Total Time: [bold]{total_eval_time}[/bold] | Device: [bold green]{gpu_name}[/bold green]")
+    model_tag = f"{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    save_dir = os.path.join("output", "Test_Results", model_tag)
+    os.makedirs(save_dir, exist_ok=True)
 
-    log_data = {
-        "user": args.user,
-        "student_id": STUDENT_ID,
-        "model": args.model,
-        "batch_size": args.batch_size,
-        "learning_rate": args.learning_rate,
-        "run_type": "test",
-        "start_time": start_clock,
-        "end_time": end_clock,
-        "gpu": gpu_name,
-        "eval_duration": total_eval_time,
-        "loss": total_loss,
-        "accuracy": accuracy,
-        "qwk": qwk
-    }
+    save_predictions(y_true, y_pred, os.path.join(save_dir, "predictions.csv"))
+    plot_confusion_matrix(y_true, y_pred, SEVERITY_LABELS, os.path.join(save_dir, "confusion_matrix.png"), args.confusion_matrix_title)
+    save_summary(metrics, os.path.join(save_dir, "test_summary.txt"), args)
 
-    save_log(log_data, args.user, args.model, "test", args.batch_size, args.learning_rate)
-    save_outputs(args.model, args.learning_rate, args.batch_size, preds, targets, filenames,
-                 args.confusion_matrix_title, args.user, STUDENT_ID, start_clock, end_clock, gpu_name, total_eval_time)
+    console.rule("[bold green]✅ Testing Complete[/bold green]")
+    for k, v in metrics.items():
+        console.print(f"[bold]{k.upper()}:[/bold] {v}")

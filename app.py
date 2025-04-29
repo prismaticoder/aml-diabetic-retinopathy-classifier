@@ -4,13 +4,11 @@ import pandas as pd
 
 st.set_page_config(page_title="Diabetic Retinopathy Detector", layout="wide")
 
-# Define paths
 output_dir = "output"
 test_results_dir = os.path.join(output_dir, "Test_Results")
 
-# Get available trained models (excluding Test_Results)
 trained_models = [
-    d for d in os.listdir(output_dir) 
+    d for d in os.listdir(output_dir)
     if os.path.isdir(os.path.join(output_dir, d)) and d != "Test_Results"
 ]
 
@@ -18,52 +16,34 @@ if not trained_models:
     st.sidebar.write("❌ No trained models found! Please train a model first.")
     st.stop()
 
-# Model selection
 selected_model = st.sidebar.selectbox("Select Model", trained_models)
 
-# Define model's test result path
 model_test_dir = os.path.join(test_results_dir, selected_model)
 
-# Display Model Information
 st.sidebar.header("📊 Model Details")
 
-# Load test summary details
 summary_path = os.path.join(model_test_dir, "test_summary.txt")
 if os.path.exists(summary_path):
     with open(summary_path, "r") as f:
-        summary_lines = f.readlines()
+        for line in f.readlines():
+            if "Precision" in line:
+                st.sidebar.subheader("📉 Evaluation Metrics:")
+            st.sidebar.write(line.strip())
 
-    for line in summary_lines:
-        if "Precision" in line:
-            st.sidebar.subheader("📉 Evaluation Metrics:")
-        st.sidebar.write(line.strip())
-
-# Load Confusion Matrix if available
 conf_matrix_path = os.path.join(model_test_dir, "confusion_matrix.png")
 if os.path.exists(conf_matrix_path):
     st.sidebar.image(conf_matrix_path, caption=f"{selected_model} - Confusion Matrix")
 
-# Load Predictions Log if available
 predictions_path = os.path.join(model_test_dir, "predictions.csv")
 if os.path.exists(predictions_path):
     st.sidebar.subheader("📊 Model Performance Breakdown")
-
     df = pd.read_csv(predictions_path)
-
-    # Rename columns for UI display
     df_display = df.rename(columns={"actual": "True Label", "predicted": "Predicted Label"})
 
-    # Compute overall accuracy
     accuracy = (df["actual"] == df["predicted"]).mean() * 100
-
-    # KPI Metric Display
     st.sidebar.metric(label="📊 Test Set Accuracy", value=f"{accuracy:.2f}%")
-
-    # Progress Bar for Accuracy
-    st.sidebar.write("📈 **Accuracy Breakdown:**")
     st.sidebar.progress(accuracy / 100)
 
-    # Compute misclassification summary
     misclassifications = df[df["actual"] != df["predicted"]]
     most_common_mistakes = misclassifications.groupby(["actual", "predicted"]).size().reset_index(name="Count")
 
@@ -91,7 +71,6 @@ if uploaded_file:
 
     if st.button("🔍 Analyze Image"):
         result = predict(temp_path, selected_model)
-
         if "error" in result:
             st.error(result["error"])
         else:
