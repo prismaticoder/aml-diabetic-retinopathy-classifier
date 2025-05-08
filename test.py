@@ -1,6 +1,4 @@
-import argparse, os, json, time
-import torch
-import torch.nn as nn
+import argparse, os, time, torch
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -36,7 +34,6 @@ def evaluate(model, loader, device):
             _, preds = torch.max(outputs, 1)
             all_preds.extend(preds.cpu().numpy())
             all_targets.extend(labels.cpu().numpy())
-
     return all_preds, all_targets
 
 def format_metrics(y_true, y_pred):
@@ -77,7 +74,7 @@ def save_summary(metrics, save_path, args):
         f.write("\n=== Evaluation Metrics ===\n")
         for k, v in metrics.items():
             f.write(f"{k.upper()}: {v}\n")
-    console.print(f"📘 Summary saved to: [magenta]{save_path}[/magenta]")
+    console.print(f"📝 Summary saved to: [magenta]{save_path}[/magenta]")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -87,9 +84,6 @@ if __name__ == "__main__":
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--csv_root_dir", required=True)
     parser.add_argument("--img_dir", required=True)
-    parser.add_argument("--train_datacsv", required=True)
-    parser.add_argument("--val_datacsv", required=True)
-    parser.add_argument("--test_datacsv", required=True)
     parser.add_argument("--saved_checkpoint_path", required=True)
     parser.add_argument("--log_dir", required=True)
     parser.add_argument("--weights", type=str, default="DEFAULT")
@@ -108,14 +102,15 @@ if __name__ == "__main__":
     model.load_state_dict(checkpoint.get("model_state_dict", checkpoint))
     console.print(f"✅ Loaded checkpoint from: [green]{args.saved_checkpoint_path}[/green]")
 
-    _, _, test_loader = get_data_loaders(
-        args.csv_root_dir, args.img_dir, args.batch_size,
-        args.train_datacsv, args.val_datacsv, args.test_datacsv,
-        resized_height=args.resized_img_height,
-        resized_width=args.resized_img_weight
+    # Load only test data
+    test_loader = get_data_loaders(
+        csv_root_dir=args.csv_root_dir,
+        img_dir=args.img_dir,
+        batch_size=args.batch_size,
+        only_test=True
     )
 
-    console.rule(f"🧪 [bold blue]Evaluating {args.model.upper()} on Test Set[/bold blue]")
+    console.rule(f"🔍 [bold blue]Evaluating {args.model.upper()} on Test Set[/bold blue]")
     start = time.time()
     y_pred, y_true = evaluate(model, test_loader, device)
     duration = round(time.time() - start, 2)
