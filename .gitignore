@@ -1,6 +1,7 @@
 # Ignore dataset directory
 dataset/
 data/
+logs/
 *.zip
 *.tar.gz
 *.h5
