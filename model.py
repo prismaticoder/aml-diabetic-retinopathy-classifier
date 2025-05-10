@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from maxvit import MaxViT
 
 from torchvision.models import (
     efficientnet_b0, EfficientNet_B0_Weights,
@@ -120,6 +121,8 @@ def get_model(name, weights="DEFAULT", n_classes=5):
         model.fc = nn.Linear(model.fc.in_features, n_classes)
     elif name == "rsgnet":
         model = get_rsgnet(n_classes=n_classes)
+    elif name == "maxvit":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
     else:
         raise ValueError(f"❌ Unsupported model: {name}")
     return model

@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Set student information
-STUDENT_ID=6891120 
-STUDENT_NAME="Zohaib Shaikh"
+STUDENT_ID=6898979 
+STUDENT_NAME="Jesutomiwa Salam"
 
 # Set model-specific variables
-MODEL_NAME="efficientnet_v2_s"
+MODEL_NAME="maxvit"
 LEARNING_RATE="0.0001"
 BATCH_SIZE="32"
 
@@ -27,7 +27,7 @@ python train.py \
 --user "$STUDENT_NAME" \
 --batch_size $BATCH_SIZE \
 --learning_rate $LEARNING_RATE \
---csv_root_dir dataset \
+--csv_root_dir labels \
 --img_dir dataset/train \
 --epochs 20 \
 --n_classes 5 \
@@ -40,9 +40,9 @@ python train.py \
 --hue 0.2 \
 --resized_img_weight 224 \
 --resized_img_height 224 \
---train_datacsv "dataset/train.csv" \
---val_datacsv "dataset/val.csv" \
---test_datacsv "dataset/test.csv" \
+--train_datacsv "labels/train.csv" \
+--val_datacsv "labels/val.csv" \
+--test_datacsv "labels/test.csv" \
 --saved_checkpoint_path $CHECKPOINT_PATH \
 --data_augmentation \
 --save_model_every_epoch \
