@@ -1,11 +1,10 @@
 import os
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader
+import numpy as np
 from PIL import Image
+from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
-import numpy as np
 
 class DiabeticRetinopathyDataset(Dataset):
     def __init__(self, csv_file, root_dir, transform=None):
@@ -17,44 +16,51 @@ class DiabeticRetinopathyDataset(Dataset):
         return len(self.annotations)
 
     def __getitem__(self, idx):
-        img_path = os.path.join(self.root_dir, self.annotations.iloc[idx, 0] + ".jpeg")
-        image = Image.open(img_path).convert("RGB")
+        img_name = self.annotations.iloc[idx, 0]
         label = int(self.annotations.iloc[idx, 1])
+        img_path = os.path.join(self.root_dir, img_name + ".jpeg")
+        image = Image.open(img_path).convert("RGB")
 
         if self.transform:
             image = self.transform(image=np.array(image))["image"]
-        return image, label
 
-train_transform = A.Compose([
-    A.Resize(224, 224),
-    A.HorizontalFlip(p=0.5),
-    A.RandomBrightnessContrast(p=0.2),
-    A.Normalize(mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]),
-    ToTensorV2()
-])
+        return image, label, img_name  # Include filename for misclassification
 
-val_transform = A.Compose([
-    A.Resize(224, 224),
-    A.Normalize(mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225]),
-    ToTensorV2()
-])
+def get_data_loaders(
+    csv_root_dir,
+    img_dir,
+    batch_size=32,
+    num_workers=2,
+    train_csv="train.csv",
+    val_csv="val.csv",
+    test_csv="test.csv",
+    resized_height=224,
+    resized_width=224
+):
+    base_transform = lambda: A.Compose([
+        A.Resize(resized_height, resized_width),
+        A.Normalize(mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225]),
+        ToTensorV2()
+    ])
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1, only_test=False):
-    if only_test:
-        test_csv_path = os.path.join(csv_root_dir, "test.csv")
-        test_dataset = DiabeticRetinopathyDataset(test_csv_path, img_dir, val_transform)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-        return test_loader
+    def make_loader(csv_file):
+        path = os.path.join(csv_root_dir, csv_file)
+        dataset = DiabeticRetinopathyDataset(
+            csv_file=path,
+            root_dir=img_dir,
+            transform=base_transform()
+        )
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=True
+        )
 
-    train_csv_path = os.path.join(csv_root_dir, "train.csv")
-    val_csv_path = os.path.join(csv_root_dir, "val.csv")
-    
-    train_dataset = DiabeticRetinopathyDataset(train_csv_path, img_dir, train_transform)
-    val_dataset = DiabeticRetinopathyDataset(val_csv_path, img_dir, val_transform)
+    train_loader = make_loader(train_csv) if train_csv else None
+    val_loader = make_loader(val_csv) if val_csv else None
+    test_loader = make_loader(test_csv) if test_csv else None
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
-
-    return train_loader, val_loader
+    return train_loader, val_loader, test_loader
