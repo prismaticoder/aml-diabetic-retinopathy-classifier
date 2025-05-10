@@ -6,7 +6,7 @@ STUDENT_NAME="Jesutomiwa Salam"
 
 # Set model-specific variables
 MODEL_NAME="maxvit"
-LEARNING_RATE="0.0001"
+LEARNING_RATE="5e-5"
 BATCH_SIZE="32"
 
 # Dynamically assign the weights based on model name

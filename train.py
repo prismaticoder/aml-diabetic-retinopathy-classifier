@@ -128,7 +128,7 @@ def train_epoch(model, loader, criterion, optimizer, device, progress_bar, task_
 
     total_loss, correct, total = 0.0, 0, 0
 
-    for images, labels in loader:
+    for i, (images, labels) in enumerate(loader):
 
         images, labels = images.to(device), labels.to(device)
 
@@ -144,6 +144,10 @@ def train_epoch(model, loader, criterion, optimizer, device, progress_bar, task_
 
         total_loss += loss.item()
 
+        if i < 20 and epoch == 1:
+
+            print(f"Epoch 1, Batch {i+1}/{len(loader)}, Batch Loss: {loss.item():.4f}")
+
         _, preds = torch.max(outputs, 1)
 
         correct += (preds == labels).sum().item()
@@ -154,7 +158,7 @@ def train_epoch(model, loader, criterion, optimizer, device, progress_bar, task_
 
         progress_bar.update(task_id, advance=1, description=f"[green]Loss: {loss.item():.4f}, Acc: {acc:.2f}%")
 
-    return total_loss, 100 * correct / total
+    return total_loss / len(loader), 100 * correct / total
 
 
 
@@ -437,7 +441,7 @@ if __name__ == "__main__":
 
             task_id = progress_bar.add_task(f"Epoch {epoch}/{args.epochs}", total=len(train_loader))
 
-            train_epoch_loss, train_epoch_acc = train_epoch(model, train_loader, criterion, optimizer, device, progress_bar, task_id)
+            train_epoch_avg_loss, train_epoch_acc = train_epoch(model, train_loader, criterion, optimizer, device, progress_bar, task_id)
 
             val_epoch_loss, val_epoch_acc, val_epoch_qwk = validate(model, val_loader, criterion, device)
 
@@ -453,7 +457,7 @@ if __name__ == "__main__":
 
                 "epoch": epoch,
 
-                "train_loss": train_epoch_loss,
+                "train_loss": train_epoch_avg_loss,
 
                 "train_acc": train_epoch_acc,
 
@@ -473,7 +477,7 @@ if __name__ == "__main__":
 
             console.print(f"\n✅ [green]Epoch {epoch} Summary[/green]: "
 
-                          f"Train Loss = {train_epoch_loss:.4f}, Train Acc = {train_epoch_acc:.2f}% | "
+                          f"Train Loss = {train_epoch_avg_loss:.4f}, Train Acc = {train_epoch_acc:.2f}% | "
 
                           f"Val Loss = {val_epoch_loss:.4f}, Val Acc = {val_epoch_acc:.2f}%, QWK = {val_epoch_qwk:.4f} | "
 
