@@ -332,6 +332,9 @@ if __name__ == "__main__":
 
     torch.manual_seed(args.seed)
 
+    print(torch.cuda.is_available())
+    print(torch.cuda.device_count())
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     start_time = time.time()

@@ -177,7 +177,7 @@ class MaxViT(nn.Module):
         self,
         img_size: int = 224,
         in_chans: int = 3,
-        num_classes: int = 5,
+        n_classes: int = 5,
         embed_dims: tuple = (64, 128, 256, 512),
         depths:     tuple = (2, 2, 5, 2),
         window_size: int = 7,
@@ -211,7 +211,7 @@ class MaxViT(nn.Module):
 
         # Classification head
         self.head_norm = nn.LayerNorm(embed_dims[-1])
-        self.head = nn.Linear(embed_dims[-1], num_classes)
+        self.head = nn.Linear(embed_dims[-1], n_classes)
 
         # init weights
         self.apply(self._init_weights)
