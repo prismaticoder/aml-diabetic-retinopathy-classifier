@@ -136,6 +136,10 @@ def train_epoch(model, loader, criterion, optimizer, device, progress_bar, task_
 
         outputs = model(images)
 
+        if i < 3 and epoch == 1: # First 3 batches of first epoch
+            print(f"Epoch 1, Batch {i+1} - RAW MODEL OUTPUTS (first 2 samples):\n{outputs[:2]}")
+            print(f"Epoch 1, Batch {i+1} - LABELS to loss fn (first 2 samples):\n{labels[:2]}")
+
         loss = criterion(outputs, labels)
 
         loss.backward()
