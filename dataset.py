@@ -61,7 +61,7 @@ def get_val_transform(resized_height, resized_width):
         ToTensorV2()
     ])
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=2,
+def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=6,
                      train_csv="train.csv", val_csv="val.csv", test_csv="test.csv",
                      resized_height=224, resized_width=224, data_aug=False,
                      brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0):

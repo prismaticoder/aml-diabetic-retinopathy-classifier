@@ -3,26 +3,23 @@
 # ─── Meta ─────────────────────────────────────────────────────
 STUDENT_ID=6896375
 STUDENT_NAME="Lawrence Attoh"
-MODEL_NAME="mlp_mixer"
+MODEL_NAME="mlp_mixer_v2_addlayer"
 LEARNING_RATE="0.0001"
 BATCH_SIZE="32"
 EPOCHS="20"
 WEIGHTS="DEFAULT"
 LOG_DIR="logs"
 CSV_DIR="dataset"
-IMAGE_DIR="dataset/train"
-TRAIN_CSV="train.csv"
-VAL_CSV="val.csv"
-TEST_CSV="test.csv"
+IMG_DIR="dataset/train"
 
 # ─── Augmentation Settings ───────────────────────────────────
-BRIGHTNESS="0.2"
-CONTRAST="0.2"
-SATURATION="0.2"
-HUE="0.2"
+BRIGHTNESS="0.3"
+CONTRAST="0.3"
+SATURATION="0.4"
+HUE="0.1"
 
 # ─── Run Training ─────────────────────────────────────────────
-python train.py \
+python3 train.py \
 --model "$MODEL_NAME" \
 --user "$STUDENT_NAME" \
 --student_id "$STUDENT_ID" \
@@ -30,10 +27,10 @@ python train.py \
 --learning_rate "$LEARNING_RATE" \
 --epochs "$EPOCHS" \
 --csv_root_dir "$CSV_DIR" \
---img_dir "$IMAGE_DIR" \
---train_datacsv "$TRAIN_CSV" \
---val_datacsv "$VAL_CSV" \
---test_datacsv "$TEST_CSV" \
+--img_dir "$IMG_DIR" \
+--train_datacsv "train.csv" \
+--val_datacsv "val.csv" \
+--test_datacsv "test.csv" \
 --log_dir "$LOG_DIR" \
 --weights "$WEIGHTS" \
 --n_classes 5 \
@@ -42,6 +39,7 @@ python train.py \
 --seed 42 \
 --save_every 2 \
 --early_stopping \
+--early_stopping_patience 5
 --optim adam \
 --lr_scheduler CosineAnnealingLR \
 --data_augmentation \

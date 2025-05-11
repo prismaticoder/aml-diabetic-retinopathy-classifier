@@ -10,7 +10,7 @@ from sklearn.metrics import (
 
 from model import get_model
 from dataset import get_data_loaders
-from utils import seed_everything
+from utils import set_seed
 
 SEVERITY_LABELS = ["No DR", "Mild", "Moderate", "Severe", "Proliferative DR"]
 
@@ -50,7 +50,7 @@ def format_metrics(y_true, y_pred):
     }
 
 def test(args):
-    seed_everything(args.seed)
+    set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Load model
@@ -64,12 +64,11 @@ def test(args):
         csv_root_dir=args.csv_root_dir,
         img_dir=args.img_dir,
         batch_size=args.batch_size,
-        train_csv=args.train_datacsv,
-        val_csv=args.val_datacsv,
-        test_csv=args.test_datacsv,
+        train_csv=os.path.basename(args.train_datacsv),
+        val_csv=os.path.basename(args.val_datacsv),
+        test_csv=os.path.basename(args.test_datacsv),
         resized_height=args.resized_img_height,
-        resized_width=args.resized_img_weight,
-        only_test=True
+        resized_width=args.resized_img_weight
     )
 
     # Inference

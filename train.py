@@ -1,15 +1,15 @@
-import argparse, os, time, datetime, torch, random
+import argparse, os, time, datetime, json, random
 import numpy as np
-import torch.nn as nn
 import pandas as pd
-import json
-from torch import nn, optim
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import cohen_kappa_score
+from torch.cuda.amp import autocast, GradScaler
 from rich.console import Console
 from dataset import get_data_loaders
 from model import get_model
-
 
 console = Console()
 
@@ -40,17 +40,16 @@ def log_training_start(args, device):
 def log_training_end(args):
     end = datetime.datetime.now()
     duration = time.time() - args._start_time
-    hours, rem = divmod(duration, 3600)
-    minutes, seconds = divmod(rem, 60)
+    h, rem = divmod(duration, 3600)
+    m, s = divmod(rem, 60)
     console.rule("✅ Training Complete")
-    console.print(f"⏱️ Duration: {int(hours)}h {int(minutes)}m {int(seconds)}s")
+    console.print(f"⏱️ Duration: {int(h)}h {int(m)}m {int(s)}s")
 
 def main(args):
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log_training_start(args, get_gpu_info())
 
-    # Load data
     train_loader, val_loader, _ = get_data_loaders(
         csv_root_dir=args.csv_root_dir,
         img_dir=args.img_dir,
@@ -64,16 +63,14 @@ def main(args):
         brightness=args.brightness,
         contrast=args.contrast,
         saturation=args.saturation,
-        hue=args.hue
+        hue=args.hue,
+        num_workers=4
     )
 
-    # Class weights
-    train_csv = pd.read_csv(os.path.join(args.csv_root_dir, args.train_datacsv))
-    class_labels = train_csv.iloc[:, 1].values
+    class_labels = pd.read_csv(os.path.join(args.csv_root_dir, args.train_datacsv)).iloc[:, 1].values
     class_weights = compute_class_weight('balanced', classes=np.unique(class_labels), y=class_labels)
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
 
-    # Model and optimizer
     model = get_model(
         args.model.lower(),
         weights=args.weights,
@@ -82,20 +79,10 @@ def main(args):
         patch_size=16
     ).to(device)
 
-
-    # Weighted cross-entropy loss
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-
-    if args.optim == "adam":
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    elif args.optim == "sgd":
-        optimizer = optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
-    else:
-        raise ValueError("Unsupported optimizer")
-
-    scheduler = None
-    if args.lr_scheduler == "CosineAnnealingLR":
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    scaler = GradScaler()
 
     log = {
         "user": args.user,
@@ -111,7 +98,9 @@ def main(args):
         "epoch_logs": []
     }
 
-    os.makedirs(f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}", exist_ok=True)
+    out_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    os.makedirs(out_dir, exist_ok=True)
+
     best_qwk = -1
     early_stop_counter = 0
 
@@ -122,13 +111,13 @@ def main(args):
 
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
+            with autocast():
+                outputs = model(images)
+                loss = criterion(outputs, labels)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             total_loss += loss.item() * labels.size(0)
             preds = outputs.argmax(dim=1)
             correct += (preds == labels).sum().item()
@@ -137,7 +126,6 @@ def main(args):
         train_acc = correct / total
         train_loss = total_loss / total
 
-        # Validation
         model.eval()
         val_total, val_correct = 0, 0
         y_true, y_pred = [], []
@@ -159,21 +147,17 @@ def main(args):
 
         console.print(f"[bold]Epoch {epoch}[/bold] | Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | QWK: {val_qwk:.4f}")
 
-        # Save best model
         if val_qwk > best_qwk:
             best_qwk = val_qwk
             early_stop_counter = 0
-            best_model_path = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}/{args.model}_epoch{epoch}.pth"
+            best_model_path = f"{out_dir}/{args.model}_epoch{epoch}.pth"
             torch.save({"model_state_dict": model.state_dict()}, best_model_path)
         else:
             early_stop_counter += 1
 
-        # Save every N epochs
         if args.save_every and epoch % args.save_every == 0:
-            path = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}/{args.model}_epoch{epoch}.pth"
-            torch.save({"model_state_dict": model.state_dict()}, path)
+            torch.save({"model_state_dict": model.state_dict()}, f"{out_dir}/{args.model}_epoch{epoch}.pth")
 
-        # Log for JSON
         log["epoch_logs"].append({
             "epoch": epoch,
             "train_loss": train_loss,
@@ -190,15 +174,13 @@ def main(args):
             log["early_stopping_epoch"] = epoch
             break
 
-        if scheduler:
-            scheduler.step()
+        scheduler.step()
 
     log["end_time_human"] = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
     log["total_training_time"] = f"{int((time.time() - args._start_time) // 60)}m"
-
     os.makedirs(args.log_dir, exist_ok=True)
-    json_name = f"{args.student_id}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json"
-    with open(os.path.join(args.log_dir, json_name), "w") as f:
+    log_path = os.path.join(args.log_dir, f"{args.student_id}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json")
+    with open(log_path, "w") as f:
         json.dump(log, f, indent=4)
 
     log_training_end(args)
@@ -226,8 +208,6 @@ if __name__ == "__main__":
     parser.add_argument("--early_stopping", action="store_true")
     parser.add_argument("--optim", default="adam")
     parser.add_argument("--lr_scheduler", default="CosineAnnealingLR")
-
-    # Augmentation options
     parser.add_argument("--data_augmentation", action="store_true")
     parser.add_argument("--brightness", type=float, default=0.0)
     parser.add_argument("--contrast", type=float, default=0.0)
