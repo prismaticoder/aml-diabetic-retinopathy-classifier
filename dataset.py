@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from PIL import Image
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -52,10 +52,20 @@ def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1):
     train_csv_path = os.path.join(csv_root_dir, "train.csv")
     val_csv_path = os.path.join(csv_root_dir, "val.csv")
     
+    train_df = pd.read_csv(train_csv_path)
+    train_labels = train_df.iloc[:, 1].values
+    
+    class_counts = np.bincount(train_labels)
+    class_weights = 1. / class_counts
+    sample_weights = np.array([class_weights[label] for label in train_labels])
+    sample_weights = torch.from_numpy(sample_weights).double()
+    
+    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(sample_weights), replacement=True)
+
     train_dataset = DiabeticRetinopathyDataset(csv_file=train_csv_path, root_dir=img_dir, transform=train_transform)
     val_dataset = DiabeticRetinopathyDataset(csv_file=val_csv_path, root_dir=img_dir, transform=val_transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, num_workers=num_workers, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     return train_loader, val_loader
