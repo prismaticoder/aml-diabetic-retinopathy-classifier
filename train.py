@@ -93,7 +93,8 @@ def get_loss_function(name):
     elif name == "labelsmoothing":
 
         return nn.CrossEntropyLoss(label_smoothing=0.1)
-
+    elif name == 'mse':
+        return nn.MSELoss()
     else:
 
         raise ValueError(f"❌ Unsupported loss: {name}")
