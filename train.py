@@ -1,15 +1,14 @@
-import argparse, os, time, datetime, json, random
+# train.py
+import argparse, os, time, datetime, torch, random, json
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn as nn
-import torch.optim as optim
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.metrics import cohen_kappa_score
-from torch.cuda.amp import autocast, GradScaler
 from rich.console import Console
 from dataset import get_data_loaders
 from model import get_model
+import torch.nn as nn
+from torch import optim
 
 console = Console()
 
@@ -23,8 +22,7 @@ def set_seed(seed=42):
 
 def get_gpu_info():
     if torch.cuda.is_available():
-        device = torch.cuda.current_device()
-        return torch.cuda.get_device_name(device)
+        return torch.cuda.get_device_name(torch.cuda.current_device())
     return "CPU"
 
 def log_training_start(args, device):
@@ -64,25 +62,31 @@ def main(args):
         contrast=args.contrast,
         saturation=args.saturation,
         hue=args.hue,
-        num_workers=4
+        blur=args.blur,
+        rotate=args.rotate
     )
 
-    class_labels = pd.read_csv(os.path.join(args.csv_root_dir, args.train_datacsv)).iloc[:, 1].values
-    class_weights = compute_class_weight('balanced', classes=np.unique(class_labels), y=class_labels)
+    df = pd.read_csv(os.path.join(args.csv_root_dir, args.train_datacsv))
+    class_weights = compute_class_weight("balanced", classes=np.unique(df.iloc[:, 1]), y=df.iloc[:, 1])
     class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
 
-    model = get_model(
-        args.model.lower(),
-        weights=args.weights,
-        n_classes=args.n_classes,
-        image_size=args.resized_img_height,
-        patch_size=16
-    ).to(device)
+    model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes,
+                      image_size=args.resized_img_height, patch_size=16).to(device)
 
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
-    scaler = GradScaler()
+
+    if args.optim.lower() == "adamw":
+        optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
+    elif args.optim.lower() == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    elif args.optim.lower() == "sgd":
+        optimizer = optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
+    else:
+        raise ValueError("Unsupported optimizer")
+
+    scheduler = None
+    if args.lr_scheduler == "CosineAnnealingLR":
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     log = {
         "user": args.user,
@@ -98,65 +102,48 @@ def main(args):
         "epoch_logs": []
     }
 
-    out_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
-    os.makedirs(out_dir, exist_ok=True)
+    output_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    os.makedirs(output_dir, exist_ok=True)
 
     best_qwk = -1
     early_stop_counter = 0
 
     for epoch in range(1, args.epochs + 1):
         model.train()
-        total_loss, correct, total = 0.0, 0, 0
+        total_loss, correct, total = 0, 0, 0
         start_time = time.time()
 
         for images, labels in train_loader:
             images, labels = images.to(device), labels.to(device)
             optimizer.zero_grad()
-            with autocast():
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
             total_loss += loss.item() * labels.size(0)
-            preds = outputs.argmax(dim=1)
-            correct += (preds == labels).sum().item()
+            correct += (outputs.argmax(1) == labels).sum().item()
             total += labels.size(0)
 
         train_acc = correct / total
         train_loss = total_loss / total
 
         model.eval()
-        val_total, val_correct = 0, 0
-        y_true, y_pred = [], []
-
+        val_loss, val_correct, y_true, y_pred = 0, 0, [], []
         with torch.no_grad():
             for images, labels in val_loader:
                 images, labels = images.to(device), labels.to(device)
                 outputs = model(images)
-                preds = outputs.argmax(dim=1)
-                val_total += labels.size(0)
+                val_loss += criterion(outputs, labels).item()
+                preds = outputs.argmax(1)
                 val_correct += (preds == labels).sum().item()
                 y_true.extend(labels.cpu().numpy())
                 y_pred.extend(preds.cpu().numpy())
 
-        val_acc = val_correct / val_total
-        val_loss = nn.CrossEntropyLoss()(outputs, labels).item()
+        val_acc = val_correct / len(y_true)
         val_qwk = cohen_kappa_score(y_true, y_pred, weights="quadratic")
-        epoch_time = round(time.time() - start_time, 2)
+        duration = round(time.time() - start_time, 2)
 
-        console.print(f"[bold]Epoch {epoch}[/bold] | Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | QWK: {val_qwk:.4f}")
-
-        if val_qwk > best_qwk:
-            best_qwk = val_qwk
-            early_stop_counter = 0
-            best_model_path = f"{out_dir}/{args.model}_epoch{epoch}.pth"
-            torch.save({"model_state_dict": model.state_dict()}, best_model_path)
-        else:
-            early_stop_counter += 1
-
-        if args.save_every and epoch % args.save_every == 0:
-            torch.save({"model_state_dict": model.state_dict()}, f"{out_dir}/{args.model}_epoch{epoch}.pth")
+        console.print(f"Epoch {epoch} | Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | QWK: {val_qwk:.4f}")
 
         log["epoch_logs"].append({
             "epoch": epoch,
@@ -165,21 +152,33 @@ def main(args):
             "val_loss": val_loss,
             "val_acc": round(val_acc * 100, 4),
             "val_qwk": round(val_qwk, 6),
-            "epoch_duration": f"{epoch_time}s"
+            "epoch_duration": f"{duration}s"
         })
 
-        if args.early_stopping and early_stop_counter >= 3:
+        if val_qwk > best_qwk:
+            best_qwk = val_qwk
+            early_stop_counter = 0
+            torch.save({"model_state_dict": model.state_dict()},
+                       os.path.join(output_dir, f"{args.model}_epoch{epoch}.pth"))
+        else:
+            early_stop_counter += 1
+
+        if args.early_stopping and early_stop_counter >= 5:
             console.print("🛑 Early stopping triggered")
             log["early_stopping_triggered"] = True
             log["early_stopping_epoch"] = epoch
             break
 
-        scheduler.step()
+        if scheduler:
+            scheduler.step()
 
     log["end_time_human"] = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
     log["total_training_time"] = f"{int((time.time() - args._start_time) // 60)}m"
+
     os.makedirs(args.log_dir, exist_ok=True)
-    log_path = os.path.join(args.log_dir, f"{args.student_id}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json")
+    log_path = os.path.join(args.log_dir,
+        f"{args.student_id}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json"
+    )
     with open(log_path, "w") as f:
         json.dump(log, f, indent=4)
 
@@ -189,9 +188,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True)
     parser.add_argument("--user", required=True)
-    parser.add_argument("--student_id", type=str, required=True)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--student_id", required=True)
+    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--learning_rate", type=float, default=0.0003)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--csv_root_dir", required=True)
     parser.add_argument("--img_dir", required=True)
@@ -206,13 +205,16 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save_every", type=int, default=2)
     parser.add_argument("--early_stopping", action="store_true")
-    parser.add_argument("--optim", default="adam")
+    parser.add_argument("--optim", default="adamw")
     parser.add_argument("--lr_scheduler", default="CosineAnnealingLR")
+
     parser.add_argument("--data_augmentation", action="store_true")
-    parser.add_argument("--brightness", type=float, default=0.0)
-    parser.add_argument("--contrast", type=float, default=0.0)
-    parser.add_argument("--saturation", type=float, default=0.0)
-    parser.add_argument("--hue", type=float, default=0.0)
+    parser.add_argument("--brightness", type=float, default=0.2)
+    parser.add_argument("--contrast", type=float, default=0.2)
+    parser.add_argument("--saturation", type=float, default=0.2)
+    parser.add_argument("--hue", type=float, default=0.1)
+    parser.add_argument("--blur", type=float, default=0.3)
+    parser.add_argument("--rotate", type=int, default=20)
 
     args = parser.parse_args()
     main(args)

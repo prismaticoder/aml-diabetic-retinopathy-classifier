@@ -24,54 +24,50 @@ class DiabeticRetinopathyDataset(Dataset):
             if os.path.exists(img_path):
                 break
         else:
-            raise FileNotFoundError(f"Image not found for base filename: {base_filename}")
+            raise FileNotFoundError(f"Image not found for: {base_filename}")
 
         image = Image.open(img_path).convert("RGB")
-
         if self.transform:
             image = self.transform(image=np.array(image))["image"]
         return image, label
 
-def get_train_transform(resized_height, resized_width, data_aug=False,
-                        brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0):
-    transforms = [
-        A.Resize(resized_height, resized_width),
-        A.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])
-    ]
+def get_train_transform(height, width, data_aug=False, brightness=0.0, contrast=0.0,
+                        saturation=0.0, hue=0.0, blur=0.0, rotate=0):
+    transforms = [A.Resize(height, width)]
 
     if data_aug:
-        transforms.insert(1, A.ColorJitter(
-            brightness=brightness,
-            contrast=contrast,
-            saturation=saturation,
-            hue=hue,
-            p=1.0
-        ))
-        transforms.insert(2, A.HorizontalFlip(p=0.5))
+        transforms.extend([
+            A.ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue, p=0.8),
+            A.HorizontalFlip(p=0.5),
+            A.GaussianBlur(blur_limit=(3, 5), p=blur),
+            A.Rotate(limit=rotate, p=0.7),
+        ])
 
-    transforms.append(ToTensorV2())
+    transforms.extend([
+        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ToTensorV2()
+    ])
     return A.Compose(transforms)
 
-def get_val_transform(resized_height, resized_width):
+def get_val_transform(height, width):
     return A.Compose([
-        A.Resize(resized_height, resized_width),
+        A.Resize(height, width),
         A.Normalize(mean=[0.485, 0.456, 0.406],
                     std=[0.229, 0.224, 0.225]),
         ToTensorV2()
     ])
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=6,
+def get_data_loaders(csv_root_dir, img_dir, batch_size=64, num_workers=4,
                      train_csv="train.csv", val_csv="val.csv", test_csv="test.csv",
                      resized_height=224, resized_width=224, data_aug=False,
-                     brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0):
+                     brightness=0.0, contrast=0.0, saturation=0.0, hue=0.0, blur=0.0, rotate=0):
 
     train_csv_path = os.path.join(csv_root_dir, train_csv)
     val_csv_path = os.path.join(csv_root_dir, val_csv)
     test_csv_path = os.path.join(csv_root_dir, test_csv)
 
     train_transform = get_train_transform(resized_height, resized_width, data_aug,
-                                          brightness, contrast, saturation, hue)
+                                          brightness, contrast, saturation, hue, blur, rotate)
     val_transform = get_val_transform(resized_height, resized_width)
 
     train_dataset = DiabeticRetinopathyDataset(train_csv_path, img_dir, transform=train_transform)
