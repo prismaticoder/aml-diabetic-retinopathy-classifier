@@ -1,39 +1,51 @@
 #!/bin/bash
 
-# ====== Student & Model Info ======
+# ─── Meta ─────────────────────────────────────────────────────
 STUDENT_ID=6896375
 STUDENT_NAME="Lawrence Attoh"
-MODEL_NAME="mlp_mixer_v2"
-LEARNING_RATE="0.0003"
+MODEL_NAME="mlp_mixer"
+LEARNING_RATE="0.0001"
 BATCH_SIZE="32"
+EPOCHS="20"
 WEIGHTS="DEFAULT"
-CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
+LOG_DIR="logs"
+CSV_DIR="dataset"
+IMAGE_DIR="dataset/train"
+TRAIN_CSV="train.csv"
+VAL_CSV="val.csv"
+TEST_CSV="test.csv"
 
-# ====== Launch Training ======
-python3 train.py \
---model $MODEL_NAME \
+# ─── Augmentation Settings ───────────────────────────────────
+BRIGHTNESS="0.2"
+CONTRAST="0.2"
+SATURATION="0.2"
+HUE="0.2"
+
+# ─── Run Training ─────────────────────────────────────────────
+python train.py \
+--model "$MODEL_NAME" \
 --user "$STUDENT_NAME" \
---batch_size $BATCH_SIZE \
---learning_rate $LEARNING_RATE \
---csv_root_dir dataset \
---img_dir dataset/train \
---epochs 20 \
+--student_id "$STUDENT_ID" \
+--batch_size "$BATCH_SIZE" \
+--learning_rate "$LEARNING_RATE" \
+--epochs "$EPOCHS" \
+--csv_root_dir "$CSV_DIR" \
+--img_dir "$IMAGE_DIR" \
+--train_datacsv "$TRAIN_CSV" \
+--val_datacsv "$VAL_CSV" \
+--test_datacsv "$TEST_CSV" \
+--log_dir "$LOG_DIR" \
+--weights "$WEIGHTS" \
 --n_classes 5 \
---optim "adam" \
---lr_scheduler "CosineAnnealingLR" \
---seed 42 \
---brightness 0.2 \
---contrast 0.2 \
---saturation 0.2 \
---hue 0.2 \
 --resized_img_weight 224 \
 --resized_img_height 224 \
---train_datacsv "dataset/train.csv" \
---val_datacsv "dataset/val.csv" \
---test_datacsv "dataset/test.csv" \
---saved_checkpoint_path $CHECKPOINT_PATH \
---data_augmentation \
---save_model_every_epoch \
+--seed 42 \
+--save_every 2 \
 --early_stopping \
---log_dir logs \
---weights $WEIGHTS
+--optim adam \
+--lr_scheduler CosineAnnealingLR \
+--data_augmentation \
+--brightness "$BRIGHTNESS" \
+--contrast "$CONTRAST" \
+--saturation "$SATURATION" \
+--hue "$HUE"
