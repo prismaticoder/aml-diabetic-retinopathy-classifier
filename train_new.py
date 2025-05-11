@@ -11,6 +11,8 @@ from sklearn.metrics import cohen_kappa_score
 from dataset import get_data_loaders
 from model import get_model
 
+from loss_kappa import WeightedKappaLoss
+
 console = Console()
 STUDENT_ID = "6891120"
 
@@ -41,16 +43,18 @@ def get_loss_function(name):
         return FocalLoss()
     elif name == "labelsmoothing":
         return nn.CrossEntropyLoss(label_smoothing=0.1)
+    elif name == 'kappa':
+        return WeightedKappaLoss(num_classes=5)
     raise ValueError(f"❌ Unsupported loss: {name}")
 
 def get_optimizer(name, params, lr):
     name = name.lower()
     if name == "adam": return optim.Adam(params, lr=lr)
     elif name == "sgd": return optim.SGD(params, lr=lr, momentum=0.9)
-    elif name == "adamw": return optim.AdamW(params, lr=lr)
+    elif name == "adamw": return optim.AdamW(params, lr=lr, weight_decay=0.01)
     raise ValueError(f"❌ Unsupported optimizer: {name}")
 
-def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, task_id):
+def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, task_id, scheduler):
     model.train()
     total_loss, correct, total = 0.0, 0, 0
     for images, labels in loader:
@@ -62,6 +66,7 @@ def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, t
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        scheduler.step()
         total_loss += loss.item()
         correct += (outputs.argmax(1) == labels).sum().item()
         total += labels.size(0)
@@ -153,13 +158,14 @@ if __name__ == "__main__":
         }
         args.model_variant = variant_map.get(args.model.lower(), "baseline")
 
-    model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes, model_variant=args.model_variant).to(device)
+    model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes).to(device)
     optimizer = get_optimizer(args.optim, model.parameters(), args.learning_rate)
     criterion = get_loss_function(args.loss)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=20, eta_min=0, last_epoch=-1)
     scaler = GradScaler()
 
     train_loader, val_loader = get_data_loaders(args.csv_root_dir, args.img_dir, args.batch_size,
-                                                num_workers=args.num_workers, profile=args.augmentation_profile or "none")
+                                                num_workers=args.num_workers)
     model_dir = f"output/{args.model}_opt{args.optim}_lr{args.learning_rate}_bs{args.batch_size}_loss{args.loss}_aug{args.augmentation_profile or 'none'}"
     plot_dir = os.path.join(args.log_dir, "plots")
 
@@ -184,7 +190,7 @@ if __name__ == "__main__":
         for epoch in range(1, args.epochs + 1):
             epoch_start = time.time()
             task_id = progress.add_task(f"Epoch {epoch}/{args.epochs}", total=len(train_loader))
-            train_epoch_loss, train_epoch_acc = train_epoch(model, train_loader, criterion, optimizer, scaler, device, progress, task_id)
+            train_epoch_loss, train_epoch_acc = train_epoch(model, train_loader, criterion, optimizer, scaler, device, progress, task_id,scheduler)
             val_epoch_loss, val_epoch_acc, val_epoch_qwk = validate(model, val_loader, criterion, device)
 
             train_loss.append(train_epoch_loss)
