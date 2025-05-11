@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# ─── Meta ─────────────────────────────────────────────────────
+# ─── Meta Info ──────────────────────────────────────────────────────────────
 STUDENT_ID=6896375
 STUDENT_NAME="Lawrence Attoh"
-MODEL_NAME="mlp_mixer_v2_addlayer"
+MODEL_NAME="mlp_mixer_v2_batchnorm"
 LEARNING_RATE="0.0001"
 BATCH_SIZE="32"
 EPOCHS="20"
@@ -12,13 +12,13 @@ LOG_DIR="logs"
 CSV_DIR="dataset"
 IMG_DIR="dataset/train"
 
-# ─── Augmentation Settings ───────────────────────────────────
-BRIGHTNESS="0.3"
-CONTRAST="0.3"
-SATURATION="0.4"
-HUE="0.1"
+# ─── Augmentation Parameters ────────────────────────────────────────────────
+BRIGHTNESS="0.2"
+CONTRAST="0.2"
+SATURATION="0.2"
+HUE="0.2"
 
-# ─── Run Training ─────────────────────────────────────────────
+# ─── Training ───────────────────────────────────────────────────────────────
 python3 train.py \
 --model "$MODEL_NAME" \
 --user "$STUDENT_NAME" \
@@ -39,7 +39,6 @@ python3 train.py \
 --seed 42 \
 --save_every 2 \
 --early_stopping \
---early_stopping_patience 5
 --optim adam \
 --lr_scheduler CosineAnnealingLR \
 --data_augmentation \

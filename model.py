@@ -2,7 +2,9 @@ import torch.nn as nn
 from torchvision.models import resnet50, ResNet50_Weights
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
 from mlp_mixer import MLPMixer
-from mlp_mixer_v2 import MLPMixerV2  # ✅ NEW IMPORT
+from mlp_mixer_v2 import MLPMixerV2
+from mlp_mixer_v2_addlayer import MLPMixerV2_AddLayer  # Task 2b
+from mlp_mixer_v2_batchnorm import MLPMixerV2BatchNorm # ✅ Task 2c
 
 def get_model(model_name, weights="DEFAULT", n_classes=5, image_size=224, patch_size=16):
     model_name = model_name.lower().strip()
@@ -23,10 +25,29 @@ def get_model(model_name, weights="DEFAULT", n_classes=5, image_size=224, patch_
             num_classes=n_classes
         )
 
-    elif model_name == "mlp_mixer_v2_addlayer":
-       from mlp_mixer_v2_addlayer import MLPMixerV2_AddLayer
-       return MLPMixerV2_AddLayer(image_size=224, patch_size=16, in_channels=3, num_classes=n_classes)
+    elif model_name == "mlp_mixer_v2":
+        model = MLPMixerV2(
+            image_size=image_size,
+            patch_size=patch_size,
+            in_channels=3,
+            num_classes=n_classes
+        )
 
+    elif model_name == "mlp_mixer_v2_addlayer":
+        model = MLPMixerV2_AddLayer(
+            image_size=image_size,
+            patch_size=patch_size,
+            in_channels=3,
+            num_classes=n_classes
+        )
+
+    elif model_name == "mlp_mixer_v2_batchnorm":
+        model = MLPMixerV2BatchNorm(
+            image_size=image_size,
+            patch_size=patch_size,
+            in_channels=3,
+            num_classes=n_classes
+        )
 
     else:
         raise ValueError(f"❌ Unsupported model: '{model_name}'")

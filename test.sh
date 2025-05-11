@@ -1,22 +1,21 @@
 #!/bin/bash
 
-# ─── Meta ─────────────────────────────────────────────────────
-STUDENT_ID=6896375
+# ─── Meta Info ──────────────────────────────────────────────────────────────
 STUDENT_NAME="Lawrence Attoh"
-MODEL_NAME="mlp_mixer_v2_addlayer"
+MODEL_NAME="mlp_mixer_v2_batchnorm"
 LEARNING_RATE="0.0001"
 BATCH_SIZE="32"
 WEIGHTS="DEFAULT"
 LOG_DIR="logs"
-CONF_MATRIX_TITLE="Confusion Matrix for ${MODEL_NAME}"
-CHECKPOINT_DIR="output/${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 CSV_DIR="dataset"
 IMG_DIR="dataset/test"
+CONF_MATRIX_TITLE="Confusion Matrix for ${MODEL_NAME}"
+CHECKPOINT_DIR="output/${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 
-# ─── Automatically Find Latest Checkpoint ─────────────────────
-CHECKPOINT_PATH="output/mlp_mixer_v2_addlayer_lr0.0001_bs32/mlp_mixer_v2_addlayer_epoch10.pth"
+# ─── Auto-Find Most Recent Checkpoint ───────────────────────────────────────
+CHECKPOINT_PATH=$(ls -t ${CHECKPOINT_DIR}/*.pth | head -n 1)
 
-# ─── Run Test ─────────────────────────────────────────────────
+# ─── Run Test ───────────────────────────────────────────────────────────────
 python3 test.py \
 --model "$MODEL_NAME" \
 --user "$STUDENT_NAME" \
