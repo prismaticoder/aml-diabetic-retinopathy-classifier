@@ -48,7 +48,7 @@ val_transform = A.Compose([
 ])
 
 # 🚚 This function returns train and validation DataLoaders
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1):
+def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=8):
     train_csv_path = os.path.join(csv_root_dir, "train.csv")
     val_csv_path = os.path.join(csv_root_dir, "val.csv")
     
