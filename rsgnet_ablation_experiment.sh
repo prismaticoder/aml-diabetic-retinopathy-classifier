@@ -20,16 +20,26 @@ AUG="none"
 WEIGHTS="DEFAULT"
 LR_SCHEDULER="CosineAnnealingLR"
 
-declare -A ARCH_MAP
-ARCH_MAP["baseline"]="rsgnet"
-ARCH_MAP["removed"]="rsgnet_removed"
-ARCH_MAP["added"]="rsgnet_added"
-ARCH_MAP["avg"]="rsgnet_avg_best"
+# Map for model_variant
+declare -A VARIANT_MAP
+VARIANT_MAP["rsgnet_added"]="added_layer"
+VARIANT_MAP["rsgnet_avg_best"]="avgpool"
+
+# Target variants (only the ones needed now)
+VARIANTS=("rsgnet_added")
 
 declare -A QWK_RESULTS
 
 run_experiment() {
   ARCH=$1
+  VARIANT=${VARIANT_MAP[$ARCH]}
+  LOG_NAME="${STUDENT_NAME// /_}_ID${STUDENT_ID}_${ARCH}_train_${BS}_${LR}.json"
+
+  if [ -f "logs/$LOG_NAME" ]; then
+    echo "⏭️ Skipping $ARCH (already exists: $LOG_NAME)"
+    return
+  fi
+
   echo "🚀 Running: $ARCH"
   python3 train.py \
     --model $ARCH \
@@ -53,43 +63,59 @@ run_experiment() {
     --log_dir $LOG_DIR \
     --weights $WEIGHTS \
     --augmentation_profile $AUG \
+    --model_variant $VARIANT \
     --save_model_every_epoch \
     --early_stopping \
     --data_augmentation
+
   echo "✅ Done: $ARCH"
   echo "--------------------------------------"
 }
 
-# Run baseline and ablation variants
-for key in baseline removed added; do
-  run_experiment ${ARCH_MAP[$key]}
+# Run rsgnet_added only (as baseline + removed are already trained)
+for model_key in "${VARIANTS[@]}"; do
+  run_experiment $model_key
 done
 
-# Parse QWK from logs
-for key in baseline removed added; do
-  LOG_FILE="logs/${STUDENT_NAME// /_}_ID${STUDENT_ID}_${ARCH_MAP[$key]}_train_${BS}_${LR}.json"
+# Python QWK extractor
+extract_qwk() {
+  local json_path=$1
+  python3 -c "
+import json
+with open('$json_path') as f:
+    data = json.load(f)
+print(data['epoch_logs'][-1]['val_qwk'])
+"
+}
+
+# Best selection logic (between added and removed)
+BEST_KEY=""
+BEST_QWK=-1
+
+for key in "rsgnet_removed" "rsgnet_added"; do
+  LOG_FILE="logs/${STUDENT_NAME// /_}_ID${STUDENT_ID}_${key}_train_${BS}_${LR}.json"
   if [ -f "$LOG_FILE" ]; then
-    QWK=$(jq '.epoch_logs[-1].val_qwk' "$LOG_FILE")
+    QWK=$(extract_qwk "$LOG_FILE")
     QWK_RESULTS[$key]=$QWK
+    if (( $(echo "$QWK > $BEST_QWK" | bc -l) )); then
+      BEST_QWK=$QWK
+      BEST_KEY=$key
+    fi
   else
     QWK_RESULTS[$key]=0
   fi
 done
 
-# Select best
-BEST_KEY="removed"
-if (( $(echo "${QWK_RESULTS[added]} > ${QWK_RESULTS[removed]}" | bc -l) )); then
-  BEST_KEY="added"
-fi
-
-# Save decision
-echo "📊 Selecting best variant based on validation QWK:" > "$LOG_DIR/rsgnet_ablation_best_model.txt"
-for key in baseline removed added; do
-  echo "• $key: QWK = ${QWK_RESULTS[$key]}" >> "$LOG_DIR/rsgnet_ablation_best_model.txt"
+# Save result to file
+RESULT_TXT="$LOG_DIR/rsgnet_ablation_best_model.txt"
+echo "📊 Validation QWK comparison:" > "$RESULT_TXT"
+for key in "rsgnet_removed" "rsgnet_added"; do
+  echo "• $key: QWK = ${QWK_RESULTS[$key]}" >> "$RESULT_TXT"
 done
-echo "✅ Best performing model: ${ARCH_MAP[$BEST_KEY]}" >> "$LOG_DIR/rsgnet_ablation_best_model.txt"
-echo "Reason: Highest QWK score among ablation experiments." >> "$LOG_DIR/rsgnet_ablation_best_model.txt"
+echo "✅ Best performing: $BEST_KEY" >> "$RESULT_TXT"
+echo "Reason: Highest QWK among ablation variants." >> "$RESULT_TXT"
+cat "$RESULT_TXT"
 
-# Run average pooling using the best
-echo "🎯 Running average pooling variant using best model: ${ARCH_MAP[$BEST_KEY]} → ${ARCH_MAP["avg"]}"
-run_experiment ${ARCH_MAP["avg"]}
+# Run avgpool variant on best
+echo "🎯 Running average pooling variant using best model: $BEST_KEY → rsgnet_avg_best"
+run_experiment rsgnet_avg_best

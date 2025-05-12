@@ -22,9 +22,9 @@ WEIGHTS="DEFAULT"
 
 # Expanded Sweep Variables
 BATCH_SIZE=64
-LEARNING_RATES=("0.0001" "0.0003" "0.0005" "0.001")
+LEARNING_RATES=("0.001" "0.0003" "0.0005" "0.0001")
 OPTIMIZERS=("adam" "sgd" "adamw")
-LOSSES=("crossentropy" "focal" "labelsmoothing")
+LOSSES=("labelsmoothing" "focal" "crossentropy")
 AUGMENTATIONS=("none" "basic" "advanced")
 
 for LR in "${LEARNING_RATES[@]}"; do

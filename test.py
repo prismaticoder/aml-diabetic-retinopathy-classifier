@@ -13,15 +13,11 @@ console = Console()
 STUDENT_ID = "6891120"
 
 def format_hms(seconds):
-    h = int(seconds) // 3600
-    m = (int(seconds) % 3600) // 60
-    s = int(seconds) % 60
+    h, m, s = int(seconds) // 3600, (int(seconds) % 3600) // 60, int(seconds) % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 def get_gpu_info():
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_name(torch.cuda.current_device())
-    return "CPU"
+    return torch.cuda.get_device_name(torch.cuda.current_device()) if torch.cuda.is_available() else "CPU"
 
 def validate(model, loader, criterion, device):
     model.eval()
@@ -51,8 +47,8 @@ def validate(model, loader, criterion, device):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
-            total_loss += loss.item()
 
+            total_loss += loss.item()
             _, pred = torch.max(outputs, 1)
             preds.extend(pred.cpu().numpy())
             targets.extend(labels.cpu().numpy())
@@ -68,22 +64,19 @@ def validate(model, loader, criterion, device):
 
 def save_log(log, student_name, model_name, run_type, batch_size, lr):
     student_name = student_name.replace(" ", "_")
-    log_file_name = f"logs/{student_name}_ID{STUDENT_ID}_{model_name}_{run_type}_{batch_size}_{lr}.json"
     os.makedirs("logs", exist_ok=True)
-    with open(log_file_name, "w") as f:
+    path = f"logs/{student_name}_ID{STUDENT_ID}_{model_name}_{run_type}_{batch_size}_{lr}.json"
+    with open(path, "w") as f:
         json.dump(log, f, indent=4)
-    console.print(f"📄 Log saved to {log_file_name}", style="bold cyan")
+    console.print(f"📋 Log saved to {path}", style="bold cyan")
 
-def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title,
-                 user, student_id, start_clock, end_clock, gpu_name, total_eval_time):
+def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title, user, student_id, start_clock, end_clock, gpu_name, total_eval_time):
     save_dir = f"output/Test_Results/{model_name}_lr{lr}_bs{bs}"
     os.makedirs(save_dir, exist_ok=True)
 
-    # Save predictions
     df = pd.DataFrame({"filename": filenames, "actual": targets, "predicted": preds})
     df.to_csv(os.path.join(save_dir, "predictions.csv"), index=False)
 
-    # Confusion matrix
     cm = confusion_matrix(targets, preds)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm)
     disp.plot(cmap='Blues')
@@ -91,7 +84,6 @@ def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title,
     plt.savefig(os.path.join(save_dir, "confusion_matrix.png"))
     plt.close()
 
-    # Test summary
     precision = precision_score(targets, preds, average='weighted', zero_division=0)
     recall = recall_score(targets, preds, average='weighted', zero_division=0)
     f1 = f1_score(targets, preds, average='weighted', zero_division=0)
@@ -103,14 +95,14 @@ def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title,
 
     summary = f"""
 👤 User: {user}
-🎓 Student ID: {student_id}
+🆔 Student ID: {student_id}
 🧠 Model: {model_name}
 📦 Batch Size: {bs}
-🚀 Learning Rate: {lr}
-🕐 Evaluation Start: {start_clock}
-🏁 Evaluation End: {end_clock}
-💻 Device: {gpu_name}
-⏱️ Evaluation Duration: {total_eval_time}
+📈 Learning Rate: {lr}
+🕒 Start: {start_clock}
+🛑 End:   {end_clock}
+🖥️ Device: {gpu_name}
+🕰️ Time: {total_eval_time}
 
 • Precision: {precision:.4f}
 • Recall:    {recall:.4f}
@@ -145,18 +137,28 @@ if __name__ == "__main__":
     parser.add_argument("--log_dir", required=True)
     parser.add_argument("--weights", type=str, default="DEFAULT")
     parser.add_argument("--evaluate_only", action="store_true")
+    parser.add_argument("--model_variant", type=str, default="baseline", help="Optional variant for RSGNet")
     parser.add_argument("--confusion_matrix_title", type=str, default="Confusion Matrix")
     args = parser.parse_args()
 
+    torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     gpu_name = get_gpu_info()
     start_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-    console.print(f"\n🚀 Evaluation started at [bold yellow]{start_clock}[/bold yellow] on [bold green]{gpu_name}[/bold green]")
-
+    console.print(f"\n🚀 Evaluation started at [yellow]{start_clock}[/yellow] on [green]{gpu_name}[/green]")
     start_time = time.time()
-    model = get_model(args.model.lower(), weights=args.weights).to(device)
+
+    # 🧠 Auto-determine model variant if RSGNet-based
+    variant_map = {
+        "rsgnet_removed": "remove_layer",
+        "rsgnet_added": "added_layer",
+        "rsgnet_avg_best": "avgpool"
+    }
+    model_variant = variant_map.get(args.model.lower(), "baseline")
+
+    model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes, model_variant=args.model_variant).to(device)
     checkpoint = torch.load(args.saved_checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    model.load_state_dict(checkpoint["model_state_dict"])
 
     criterion = nn.CrossEntropyLoss()
     from test_dataset import get_test_loader
@@ -167,10 +169,9 @@ if __name__ == "__main__":
     end_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
     total_eval_time = format_hms(time.time() - start_time)
 
-    console.print(f"\n📈 [bold green]Evaluation Results:[/bold green] "
-                  f"Loss = {total_loss:.4f}, Accuracy = {accuracy:.2f}%, QWK = {qwk:.4f}")
-    console.print(f"🏁 Evaluation ended at [bold yellow]{end_clock}[/bold yellow]")
-    console.print(f"⏱️ Total Time: [bold]{total_eval_time}[/bold] | Device: [bold green]{gpu_name}[/bold green]")
+    console.print(f"\n📈 [green]Evaluation Results:[/green] Loss = {total_loss:.4f}, Accuracy = {accuracy:.2f}%, QWK = {qwk:.4f}")
+    console.print(f"🛑 Evaluation ended at [yellow]{end_clock}[/yellow]")
+    console.print(f"⏱️ Time: [bold]{total_eval_time}[/bold] | GPU: [green]{gpu_name}[/green]")
 
     log_data = {
         "user": args.user,

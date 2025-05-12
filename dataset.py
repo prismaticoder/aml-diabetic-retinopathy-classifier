@@ -71,7 +71,7 @@ def get_transforms(profile="none"):
     else:
         raise ValueError(f"❌ Unknown augmentation profile: {profile}")
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1, profile="basic", only_test=False):
+def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=8, profile="basic", only_test=False,pin_memory=True):
     train_csv_path = os.path.join(csv_root_dir, "train.csv")
     val_csv_path = os.path.join(csv_root_dir, "val.csv")
     test_csv_path = os.path.join(csv_root_dir, "test.csv")
