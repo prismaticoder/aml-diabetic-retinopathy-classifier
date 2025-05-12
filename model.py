@@ -54,6 +54,10 @@ def get_model(name, weights="DEFAULT", n_classes=5):
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
     elif name == "maxvit_2":
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
+    elif name == "maxvit_mse":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
+        if hasattr(model, 'head'):
+            model.head = nn.Linear(model.head.in_features, 1)
     elif name == "maxvit_t":
         model = maxvit_t(weights=MaxVit_T_Weights.DEFAULT)
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)

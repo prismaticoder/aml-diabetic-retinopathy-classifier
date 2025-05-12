@@ -62,15 +62,26 @@ def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, t
         optimizer.zero_grad()
         with autocast():
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            if (isinstance(criterion, nn.MSELoss)):
+                prepared_loss_labels = labels.float().unsqueeze(1)
+            else:
+                prepared_loss_labels = labels
+            loss = criterion(outputs, prepared_loss_labels)
         scaler.scale(loss).backward()
         
-        torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
         scaler.step(optimizer)
         scaler.update()
         total_loss += loss.item()
+        
         correct += (outputs.argmax(1) == labels).sum().item()
+        if isinstance(criterion, nn.MSELoss):
+            preds_batch = outputs.round().long().squeeze(1)   # regression → class id
+            preds_batch = preds_batch.clamp(0, 4)
+        else:
+            preds_batch = outputs.argmax(1)
+        correct += (preds_batch == labels).sum().item()
         total += labels.size(0)
         acc = 100 * correct / total
         progress.update(task_id, advance=1, description=f"[green]Loss: {loss.item():.4f}, Acc: {acc:.2f}%")
@@ -85,7 +96,15 @@ def validate(model, loader, criterion, device):
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            if isinstance(criterion, nn.MSELoss):
+                prepared_loss_labels = labels.float().unsqueeze(1)
+                loss = criterion(outputs, prepared_loss_labels)
+                pred = outputs.round().long().squeeze(1)
+                pred = pred.clamp(0, 4)
+            else:
+                loss = criterion(outputs, labels)
+                pred = outputs.argmax(1)
+                
             total_loss += loss.item()
             pred = outputs.argmax(1)
             preds.extend(pred.cpu().numpy())

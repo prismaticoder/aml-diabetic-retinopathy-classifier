@@ -31,9 +31,11 @@ class DiabeticRetinopathyDataset(Dataset):
 
 # 🔧 Here's the preprocessing + augmentation pipeline used on all images
 train_transform = A.Compose([
-    A.Resize(224, 224),  # All images resized to 224x224 for model input
+    # A.Resize(224, 224),  # All images resized to 224x224 for model input
+    A.RandomResizedCrop(224, 224, scale=(0.8, 1.0), ratio=(0.8, 1.2)),
     A.HorizontalFlip(p=0.5),  # Flip 50% of images for variety
-    A.RandomBrightnessContrast(p=0.2),  # Small brightness/contrast changes
+    A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.8),
+    # A.RandomBrightnessContrast(p=0.2),  # Small brightness/contrast changesif 
     A.Normalize(mean=[0.485, 0.456, 0.406],  # Normalize like ImageNet
                 std=[0.229, 0.224, 0.225]),
     ToTensorV2()  # Convert the image to a PyTorch Tensor
