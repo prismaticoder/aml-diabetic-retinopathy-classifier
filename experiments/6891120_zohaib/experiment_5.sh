@@ -3,6 +3,9 @@
 # This script is used to run the training for the eighth experiment
 # It involves keeping the learning rate the same and adjusting the batch size to 64 to evaluate the scalability of the baseline RSGNet
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 STUDENT_ID=6891120
 STUDENT_NAME="Zohaib Shaikh"
 MODEL_NAME="rsgnet"
@@ -13,7 +16,7 @@ OPTIMIZER="adam"
 LOSS_FUNCTION="crossentropy"
 CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 
-python ../../train.py \
+python train.py \
   --model $MODEL_NAME \
   --user "$STUDENT_NAME" \
   --student_id $STUDENT_ID \

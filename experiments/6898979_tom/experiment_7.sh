@@ -4,6 +4,9 @@
 # In this experiment, the loss function is adjusted to mse while the entire architecture is kept the same. MSE is used
 # in such a way that the task can be viewed as an ordinal regression task.
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 # Set student information
 STUDENT_ID=6898979 
 STUDENT_NAME="Jesutomiwa Salam"
@@ -17,7 +20,7 @@ BATCH_SIZE="32"
 CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 
 # Python command to run the training
-python ../../train.py \
+python train.py \
 --model $MODEL_NAME \
 --user "$STUDENT_NAME" \
 --student_id $STUDENT_ID \

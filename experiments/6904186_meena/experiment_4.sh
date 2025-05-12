@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 # Set student information
 STUDENT_ID=6904186
 STUDENT_NAME="Meenakshy Prem"
@@ -13,7 +16,7 @@ BATCH_SIZE="16"
 CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 
 # Python command to run the training
-python ../../train.py \
+python train.py \
 --model $MODEL_NAME \
 --user "$STUDENT_NAME" \
 --batch_size $BATCH_SIZE \

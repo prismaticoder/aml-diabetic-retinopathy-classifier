@@ -5,6 +5,9 @@
 # The number of epochs is increased to 30 due to the higher complexity of the model
 # Early stopping is removed to allow the model learn well considering the complexity of the model
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 # Set student information
 STUDENT_ID=6898979 
 STUDENT_NAME="Jesutomiwa Salam"
@@ -18,7 +21,7 @@ BATCH_SIZE="32"
 CHECKPOINT_PATH="${MODEL_NAME}_lr${LEARNING_RATE}_bs${BATCH_SIZE}"
 
 # Python command to run the training
-python ../../train.py \
+python train.py \
 --model $MODEL_NAME \
 --user "$STUDENT_NAME" \
 --student_id $STUDENT_ID \

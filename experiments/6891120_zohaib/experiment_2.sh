@@ -8,6 +8,9 @@
 # 2. rsgnet_removed - existing layer is removed
 # 3. rsgnet_avg_best - best model from the added and removed variants is used
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 STUDENT_ID=6891120
 STUDENT_NAME="Zohaib Shaikh"
 MODEL_NAME="rsgnet"
@@ -49,7 +52,7 @@ run_experiment() {
   fi
 
   echo "🚀 Running: $ARCH"
-  python ../../train.py \
+  python train.py \
     --model $ARCH \
     --user "$STUDENT_NAME" \
     --student_id $STUDENT_ID \

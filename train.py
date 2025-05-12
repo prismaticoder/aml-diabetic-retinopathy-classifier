@@ -40,14 +40,14 @@ def get_loss_function(name):
         return WeightedKappaLoss(num_classes=5)
     elif name == "mse":
         return nn.MSELoss()
-    raise ValueError(f"❌ Unsupported loss: {name}")
+    raise ValueError(f"Unsupported loss: {name}")
 
 def get_optimizer(name, params, lr):
     name = name.lower()
     if name == "adam": return optim.Adam(params, lr=lr)
     elif name == "sgd": return optim.SGD(params, lr=lr, momentum=0.9)
     elif name == "adamw": return optim.AdamW(params, lr=lr, weight_decay=0.03)
-    raise ValueError(f"❌ Unsupported optimizer: {name}")
+    raise ValueError(f"Unsupported optimizer: {name}")
 
 def derive_model_variant(model_name):
     variant_map = {

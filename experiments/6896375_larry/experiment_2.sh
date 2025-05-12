@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Go two levels up from the current script's directory
+cd "$(dirname "$0")/../.."
+
 # ─── Meta ─────────────────────────────────────────────────────
 STUDENT_ID=6896375
 STUDENT_NAME="Lawrence Attoh"
@@ -19,7 +22,7 @@ SATURATION="0.4"
 HUE="0.1"
 
 # ─── Run Training ─────────────────────────────────────────────
-python ../../train.py \
+python train.py \
 --model "$MODEL_NAME" \
 --user "$STUDENT_NAME" \
 --student_id "$STUDENT_ID" \
