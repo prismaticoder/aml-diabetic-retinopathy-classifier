@@ -26,7 +26,7 @@ python train.py \
 --student_id $STUDENT_ID \
 --batch_size $BATCH_SIZE \
 --learning_rate $LEARNING_RATE \
---csv_root_dir labels \
+--csv_root_dir dataset \
 --img_dir dataset/train \
 --epochs 30 \
 --n_classes 5 \
@@ -35,9 +35,9 @@ python train.py \
 --seed 42 \
 --resized_img_weight 224 \
 --resized_img_height 224 \
---train_datacsv "labels/train.csv" \
---val_datacsv "labels/val.csv" \
---test_datacsv "labels/test.csv" \
+--train_datacsv "dataset/train.csv" \
+--val_datacsv "dataset/val.csv" \
+--test_datacsv "dataset/test.csv" \
 --saved_checkpoint_path $CHECKPOINT_PATH \
 --data_augmentation \
 --save_model_every_epoch \
