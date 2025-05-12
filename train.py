@@ -1,52 +1,71 @@
-# train.py
-import argparse, os, time, datetime, torch, random, json
+import os
+import json
+import time
+import torch
+import argparse
 import numpy as np
-import pandas as pd
-from sklearn.utils.class_weight import compute_class_weight
-from sklearn.metrics import cohen_kappa_score
+import torch.nn as nn
 from rich.console import Console
 from dataset import get_data_loaders
 from model import get_model
-import torch.nn as nn
-from torch import optim
+from utils import set_seed, get_gpu_info, EarlyStopping
+from sklearn.metrics import cohen_kappa_score
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 
 console = Console()
 
-def set_seed(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+def train_one_epoch(model, loader, criterion, optimizer, device):
+    model.train()
+    running_loss = 0.0
+    correct = 0
+    total = 0
 
-def get_gpu_info():
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_name(torch.cuda.current_device())
-    return "CPU"
+    for images, labels in loader:
+        images, labels = images.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
 
-def log_training_start(args, device):
-    start = datetime.datetime.now()
-    args._start_time = time.time()
-    args._start_time_human = start.strftime("%Y-%m-%d %I:%M:%S %p")
-    args._device = device
-    console.rule(f"🚀 Training {args.model.upper()}")
-    console.print(f"🕒 Started at: {args._start_time_human}")
-    console.print(f"💻 Device: {device}")
-    console.print(f"📦 Batch Size: {args.batch_size}, LR: {args.learning_rate}, Epochs: {args.epochs}")
+        running_loss += loss.item()
+        preds = torch.argmax(outputs, dim=1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
 
-def log_training_end(args):
-    end = datetime.datetime.now()
-    duration = time.time() - args._start_time
-    h, rem = divmod(duration, 3600)
-    m, s = divmod(rem, 60)
-    console.rule("✅ Training Complete")
-    console.print(f"⏱️ Duration: {int(h)}h {int(m)}m {int(s)}s")
+    epoch_loss = running_loss / len(loader)
+    epoch_acc = 100 * correct / total
+    return epoch_loss, epoch_acc
+
+def validate(model, loader, criterion, device):
+    model.eval()
+    running_loss = 0.0
+    correct = 0
+    total = 0
+    y_true, y_pred = [], []
+
+    with torch.no_grad():
+        for images, labels in loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item()
+            preds = torch.argmax(outputs, dim=1)
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+            y_true.extend(labels.cpu().numpy())
+            y_pred.extend(preds.cpu().numpy())
+
+    epoch_loss = running_loss / len(loader)
+    epoch_acc = 100 * correct / total
+    qwk = cohen_kappa_score(y_true, y_pred, weights="quadratic")
+    return epoch_loss, epoch_acc, qwk
 
 def main(args):
     set_seed(args.seed)
+    start_time = time.time()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log_training_start(args, get_gpu_info())
+    console.rule(f"[bold cyan]🚀 Training {args.model.upper()}")
 
     train_loader, val_loader, _ = get_data_loaders(
         csv_root_dir=args.csv_root_dir,
@@ -57,164 +76,106 @@ def main(args):
         test_csv=args.test_datacsv,
         resized_height=args.resized_img_height,
         resized_width=args.resized_img_weight,
-        data_aug=args.data_augmentation,
-        brightness=args.brightness,
-        contrast=args.contrast,
-        saturation=args.saturation,
-        hue=args.hue,
-        blur=args.blur,
-        rotate=args.rotate
+        data_aug=True
     )
 
-    df = pd.read_csv(os.path.join(args.csv_root_dir, args.train_datacsv))
-    class_weights = compute_class_weight("balanced", classes=np.unique(df.iloc[:, 1]), y=df.iloc[:, 1])
-    class_weights = torch.tensor(class_weights, dtype=torch.float).to(device)
+    model = get_model(
+        args.model.lower(),
+        weights=args.weights,
+        n_classes=args.n_classes,
+        patch_size=args.patch_size  # ✅ Now passed in
+    ).to(device)
 
-    model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes,
-                      image_size=args.resized_img_height, patch_size=16).to(device)
+    criterion = nn.CrossEntropyLoss()
 
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    optimizer = {
+        "adam": torch.optim.Adam(model.parameters(), lr=args.learning_rate),
+        "adamw": torch.optim.AdamW(model.parameters(), lr=args.learning_rate),
+        "sgd": torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
+    }[args.optim]
 
-    if args.optim.lower() == "adamw":
-        optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
-    elif args.optim.lower() == "adam":
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
-    elif args.optim.lower() == "sgd":
-        optimizer = optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9)
-    else:
-        raise ValueError("Unsupported optimizer")
+    scheduler = {
+        "step": StepLR(optimizer, step_size=5, gamma=0.5),
+        "cosine": CosineAnnealingLR(optimizer, T_max=10)
+    }[args.lr_scheduler]
 
-    scheduler = None
-    if args.lr_scheduler == "CosineAnnealingLR":
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    early_stopping = EarlyStopping(patience=5, verbose=True)
+
+    out_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
+    os.makedirs(out_dir, exist_ok=True)
 
     log = {
         "user": args.user,
-        "student_id": args.student_id,
         "model": args.model,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
         "epochs": args.epochs,
         "optimizer": args.optim,
         "lr_scheduler": args.lr_scheduler,
-        "start_time_human": args._start_time_human,
+        "patch_size": args.patch_size,
+        "start_time_human": time.strftime("%Y-%m-%d %I:%M:%S %p"),
         "gpu_name": get_gpu_info(),
         "epoch_logs": []
     }
 
-    output_dir = f"output/{args.model}_lr{args.learning_rate}_bs{args.batch_size}"
-    os.makedirs(output_dir, exist_ok=True)
-
-    best_qwk = -1
-    early_stop_counter = 0
-
+    best_val_qwk = -1.0
     for epoch in range(1, args.epochs + 1):
-        model.train()
-        total_loss, correct, total = 0, 0, 0
-        start_time = time.time()
-
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * labels.size(0)
-            correct += (outputs.argmax(1) == labels).sum().item()
-            total += labels.size(0)
-
-        train_acc = correct / total
-        train_loss = total_loss / total
-
-        model.eval()
-        val_loss, val_correct, y_true, y_pred = 0, 0, [], []
-        with torch.no_grad():
-            for images, labels in val_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                val_loss += criterion(outputs, labels).item()
-                preds = outputs.argmax(1)
-                val_correct += (preds == labels).sum().item()
-                y_true.extend(labels.cpu().numpy())
-                y_pred.extend(preds.cpu().numpy())
-
-        val_acc = val_correct / len(y_true)
-        val_qwk = cohen_kappa_score(y_true, y_pred, weights="quadratic")
-        duration = round(time.time() - start_time, 2)
-
-        console.print(f"Epoch {epoch} | Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | QWK: {val_qwk:.4f}")
+        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc, val_qwk = validate(model, val_loader, criterion, device)
+        scheduler.step()
 
         log["epoch_logs"].append({
             "epoch": epoch,
             "train_loss": train_loss,
-            "train_acc": round(train_acc * 100, 4),
+            "train_acc": train_acc,
             "val_loss": val_loss,
-            "val_acc": round(val_acc * 100, 4),
-            "val_qwk": round(val_qwk, 6),
-            "epoch_duration": f"{duration}s"
+            "val_acc": val_acc,
+            "val_qwk": val_qwk
         })
 
-        if val_qwk > best_qwk:
-            best_qwk = val_qwk
-            early_stop_counter = 0
-            torch.save({"model_state_dict": model.state_dict()},
-                       os.path.join(output_dir, f"{args.model}_epoch{epoch}.pth"))
-        else:
-            early_stop_counter += 1
+        console.print(f"[bold yellow]Epoch {epoch}[/] | Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | QWK: {val_qwk:.4f}")
+        
+        if val_qwk > best_val_qwk:
+            best_val_qwk = val_qwk
+            torch.save(model.state_dict(), os.path.join(out_dir, f"{args.model}_epoch{epoch}.pth"))
 
-        if args.early_stopping and early_stop_counter >= 5:
-            console.print("🛑 Early stopping triggered")
+        if early_stopping(val_qwk):
             log["early_stopping_triggered"] = True
             log["early_stopping_epoch"] = epoch
             break
 
-        if scheduler:
-            scheduler.step()
+    log["end_time_human"] = time.strftime("%Y-%m-%d %I:%M:%S %p")
+    log["total_training_time"] = f"{(time.time() - start_time) / 60:.0f}m"
 
-    log["end_time_human"] = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-    log["total_training_time"] = f"{int((time.time() - args._start_time) // 60)}m"
-
-    os.makedirs(args.log_dir, exist_ok=True)
-    log_path = os.path.join(args.log_dir,
-        f"{args.student_id}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json"
-    )
+    log_path = f"logs/{args.user}_{args.model}_train_{args.batch_size}_{args.learning_rate}.json"
+    os.makedirs("logs", exist_ok=True)
     with open(log_path, "w") as f:
-        json.dump(log, f, indent=4)
+        json.dump(log, f, indent=2)
 
-    log_training_end(args)
+    console.rule("[bold green]✅ Training Complete")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--user", required=True)
-    parser.add_argument("--student_id", required=True)
-    parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--learning_rate", type=float, default=0.0003)
-    parser.add_argument("--epochs", type=int, default=20)
-    parser.add_argument("--csv_root_dir", required=True)
-    parser.add_argument("--img_dir", required=True)
-    parser.add_argument("--train_datacsv", required=True)
-    parser.add_argument("--val_datacsv", required=True)
-    parser.add_argument("--test_datacsv", required=True)
-    parser.add_argument("--log_dir", type=str, default="logs")
-    parser.add_argument("--weights", type=str, default="DEFAULT")
-    parser.add_argument("--n_classes", type=int, default=5)
-    parser.add_argument("--resized_img_weight", type=int, default=224)
-    parser.add_argument("--resized_img_height", type=int, default=224)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save_every", type=int, default=2)
-    parser.add_argument("--early_stopping", action="store_true")
-    parser.add_argument("--optim", default="adamw")
-    parser.add_argument("--lr_scheduler", default="CosineAnnealingLR")
-
-    parser.add_argument("--data_augmentation", action="store_true")
-    parser.add_argument("--brightness", type=float, default=0.2)
-    parser.add_argument("--contrast", type=float, default=0.2)
-    parser.add_argument("--saturation", type=float, default=0.2)
-    parser.add_argument("--hue", type=float, default=0.1)
-    parser.add_argument("--blur", type=float, default=0.3)
-    parser.add_argument("--rotate", type=int, default=20)
+    parser.add_argument('--model', required=True)
+    parser.add_argument('--user', required=True)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--csv_root_dir', required=True)
+    parser.add_argument('--img_dir', required=True)
+    parser.add_argument('--train_datacsv', required=True)
+    parser.add_argument('--val_datacsv', required=True)
+    parser.add_argument('--test_datacsv', required=True)
+    parser.add_argument('--weights', default="DEFAULT")
+    parser.add_argument('--n_classes', type=int, default=5)
+    parser.add_argument('--resized_img_weight', type=int, default=224)
+    parser.add_argument('--resized_img_height', type=int, default=224)
+    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--optim', default='adamw')
+    parser.add_argument('--lr_scheduler', default='cosine', choices=['step', 'cosine'])
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--log_dir', default="logs")
+    parser.add_argument('--patch_size', type=int, default=16)  # ✅ Added
 
     args = parser.parse_args()
+    args.lr_scheduler = args.lr_scheduler.lower()
     main(args)

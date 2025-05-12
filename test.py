@@ -49,13 +49,21 @@ def evaluate(model, loader, device, criterion):
 def test(args):
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_model(args.model, weights=args.weights, n_classes=args.n_classes).to(device)
+    model = get_model(
+        model_name=args.model,
+        weights=args.weights,
+        n_classes=args.n_classes,
+        patch_size=args.patch_size
+    ).to(device)
 
     # Load checkpoint
     checkpoint = torch.load(args.saved_checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"] if "model_state_dict" in checkpoint else checkpoint)
+    if "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        model.load_state_dict(checkpoint)
 
-    # Data loaders
+    # Load test data
     _, _, test_loader = get_data_loaders(
         csv_root_dir=args.csv_root_dir,
         img_dir=args.img_dir,
@@ -65,7 +73,7 @@ def test(args):
         test_csv=args.test_datacsv,
         resized_height=args.resized_img_height,
         resized_width=args.resized_img_weight,
-        data_aug=False  # Test set is never augmented
+        data_aug=False
     )
 
     criterion = nn.CrossEntropyLoss()
@@ -73,17 +81,18 @@ def test(args):
 
     console.rule("[bold green]✅ Test Complete![/bold green]")
     console.print(f"📉 Loss      : {loss:.4f}")
-    console.print(f"🎯 Precision : {precision * 100:.2f}")
-    console.print(f"🎯 Recall    : {recall * 100:.2f}")
-    console.print(f"🎯 F1 Score  : {f1 * 100:.2f}")
-    console.print(f"🔗 QWK       : {qwk:.4f}")
+    console.print(f"✅ Precision : {precision * 100:.2f}")
+    console.print(f"✅ Recall    : {recall * 100:.2f}")
+    console.print(f"✅ F1 Score  : {f1 * 100:.2f}")
+    console.print(f"📊 QWK       : {qwk:.4f}")
 
-    # Save classification report
+    # Save classification report and confusion matrix
     report = classification_report(y_true, y_pred, output_dict=True)
     df_report = pd.DataFrame(report).transpose()
 
     out_dir = os.path.join("output", "Test_Results", f"{args.model}_lr{args.learning_rate}_bs{args.batch_size}")
     os.makedirs(out_dir, exist_ok=True)
+
     df_report.to_csv(os.path.join(out_dir, "predictions.csv"), index=True)
 
     with open(os.path.join(out_dir, "test_summary.txt"), "w") as f:
@@ -115,11 +124,13 @@ if __name__ == "__main__":
     parser.add_argument('--n_classes', type=int, default=5)
     parser.add_argument('--resized_img_weight', type=int, default=224)
     parser.add_argument('--resized_img_height', type=int, default=224)
+    parser.add_argument('--patch_size', type=int, default=16)
     parser.add_argument('--log_dir', default="logs")
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--optim', default='adam')
-    parser.add_argument('--lr_scheduler', default='CosineAnnealingLR')
+    parser.add_argument('--optim', default='adamw')
+    parser.add_argument('--lr_scheduler', default='cosine')
     parser.add_argument('--confusion_matrix_title', type=str, default=None)
     parser.add_argument('--evaluate_only', action="store_true")
     args = parser.parse_args()
+
     test(args)
