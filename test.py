@@ -1,127 +1,193 @@
-# 📦 Importing Required Libraries
+import argparse, os, json, time, torch
+import torch.nn as nn
+from rich.console import Console
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn, SpinnerColumn
+from datetime import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.metrics import cohen_kappa_score, confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score, roc_auc_score
+from dataset import get_data_loaders
+from model import get_model
 
-import torch                      # PyTorch - main library for deep learning
-import os                         # Helps with file paths and directories
-import matplotlib.pyplot as plt   # For plotting graphs
-import seaborn as sns             # For prettier plots
-import pandas as pd               # For handling CSV files and dataframes
-from sklearn.metrics import confusion_matrix, accuracy_score  # For evaluating model performance
-from dataset import get_data_loaders                           # Custom function to load our dataset
-import torchvision.models as models                            # Pretrained models like ResNet, EfficientNet
-from tqdm import tqdm                                            # Shows loading bars during loops
-import torch.nn as nn                                            # Neural network layers and functions
+console = Console()
+STUDENT_ID = "6891120"
 
-# 🧠 Define testing configuration (you can tweak these)
-batch_size = 32
-learning_rate = 0.0001
-csv_root_dir = "labels"     # Labels CSV
-img_dir = "dataset/train"                # Image folder
-output_dir = "output"                    # Where model weights and results are saved
+def format_hms(seconds):
+    h = int(seconds) // 3600
+    m = (int(seconds) % 3600) // 60
+    s = int(seconds) % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
-# 🧪 This function runs the actual model testing
-def test_model(model_name):
+def get_gpu_info():
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_name(torch.cuda.current_device())
+    return "CPU"
 
-    # Build the path to the model directory based on its name and training settings
-    model_dir = os.path.join(output_dir, f"{model_name}_lr0.0001_bs{batch_size}")
+def validate(model, loader, criterion, device):
+    model.eval()
+    total_loss, correct, total = 0.0, 0, 0
+    preds, targets, filenames = [], [], []
 
-    # If no trained model found in that folder, give error and stop
-    if not os.path.exists(model_dir) or not any(f.endswith(".pth") for f in os.listdir(model_dir)):
-        print(f"❌ No trained model found for '{model_name}'! Please train the model first.")
-        return
+    with torch.no_grad(), Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]Evaluating"),
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("[cyan]Running...", total=len(loader))
 
-    # Get the latest checkpoint (last model saved during training)
-    model_files = [f for f in os.listdir(model_dir) if f.endswith(".pth")]
-    model_files.sort()  # Sort by name so we can pick the latest
-    model_path = os.path.join(model_dir, model_files[-1])
-    print(f"✅ Loaded Model: {model_path}")
+        for batch in loader:
+            if len(batch) == 2:
+                images, labels = batch
+                fnames = ["unknown"] * len(labels)
+            elif len(batch) == 3:
+                images, labels, fnames = batch
+            else:
+                raise ValueError("Unexpected number of elements returned from test loader.")
 
-    # Choose device: Use GPU (cuda) if available, otherwise use CPU
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Load the base model structure (like ResNet or EfficientNet)
-    model = getattr(models, model_name)(weights="DEFAULT")
-
-    # Modify the final layer to match our 5 DR classes
-    if hasattr(model, "fc"):  # ResNet-style
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, 5)
-    elif hasattr(model, "classifier"):  # EfficientNet-style
-        num_ftrs = model.classifier[-1].in_features
-        model.classifier[-1] = nn.Linear(num_ftrs, 5)
-
-    model = model.to(device)  # Move model to device (CPU or GPU)
-
-    # 🔁 Load the actual trained weights
-    checkpoint = torch.load(model_path, map_location=device)
-
-    # Some models are saved as {'state_dict': model.state_dict()}
-    if "state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["state_dict"])
-    else:
-        model.load_state_dict(checkpoint)
-
-    model.eval()  # Set the model to evaluation mode (disables training features like dropout)
-
-    # Where to save the test results
-    test_results_dir = os.path.join(output_dir, "Test_Results", f"{model_name}_lr{learning_rate}_bs{batch_size}")
-    os.makedirs(test_results_dir, exist_ok=True)
-
-    # Load validation set using same transformation and batch size as training
-    _, val_loader = get_data_loaders(csv_root_dir, img_dir, batch_size=batch_size)
-
-    # Create empty lists to store results
-    y_true, y_pred = [], []
-    total_samples = 0
-    correct_predictions = 0
-
-    # 🧪 Run the model on the validation set
-    with torch.no_grad():  # Disable gradient tracking for efficiency
-        for images, labels in tqdm(val_loader, desc=f"Testing {model_name}"):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
-            _, predicted = torch.max(outputs, 1)  # Pick class with highest probability
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
 
-            # Save ground truth and predictions
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(predicted.cpu().numpy())
+            _, pred = torch.max(outputs, 1)
+            preds.extend(pred.cpu().numpy())
+            targets.extend(labels.cpu().numpy())
+            filenames.extend(fnames)
+            correct += (pred == labels).sum().item()
+            total += labels.size(0)
 
-            # Count how many predictions were correct
-            correct_predictions += (predicted == labels).sum().item()
-            total_samples += labels.size(0)
+            progress.update(task_id, advance=1)
 
-    # ✅ Calculate overall accuracy
-    test_accuracy = accuracy_score(y_true, y_pred) * 100
-    print(f"\n🔥 {model_name} - Final Test Accuracy: {test_accuracy:.2f}% 🔥")
+    acc = 100 * correct / total
+    qwk = cohen_kappa_score(targets, preds, weights="quadratic")
+    return total_loss, acc, qwk, preds, targets, filenames
 
-    # 🧾 Confusion matrix (table showing where predictions go wrong)
-    cm = confusion_matrix(y_true, y_pred)
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title(f"Confusion Matrix - {model_name}")
+def save_log(log, student_name, model_name, run_type, batch_size, lr):
+    student_name = student_name.replace(" ", "_")
+    log_file_name = f"logs/{student_name}_ID{STUDENT_ID}_{model_name}_{run_type}_{batch_size}_{lr}.json"
+    os.makedirs("logs", exist_ok=True)
+    with open(log_file_name, "w") as f:
+        json.dump(log, f, indent=4)
+    console.print(f"📄 Log saved to {log_file_name}", style="bold cyan")
 
-    # 📝 Save test summary as text file
-    summary_path = os.path.join(test_results_dir, "test_summary.txt")
-    with open(summary_path, "w") as f:
-        f.write(f"Model: {model_name}\n")
-        f.write(f"Total Samples: {total_samples}\n")
-        f.write(f"Batch Size: {batch_size}\n")
-        f.write(f"Final Test Accuracy: {test_accuracy:.2f}%\n")
-    print(f"✅ Test summary saved at: {summary_path}")
+def save_outputs(model_name, lr, bs, preds, targets, filenames, cm_title,
+                 user, student_id, start_clock, end_clock, gpu_name, total_eval_time):
+    save_dir = f"output/Test_Results/{model_name}_lr{lr}_bs{bs}"
+    os.makedirs(save_dir, exist_ok=True)
 
-    # 📄 Save predictions as CSV
-    predictions_df = pd.DataFrame({"True Label": y_true, "Predicted Label": y_pred})
-    predictions_csv_path = os.path.join(test_results_dir, "predictions.csv")
-    predictions_df.to_csv(predictions_csv_path, index=False)
-    print(f"✅ Predictions saved at: {predictions_csv_path}")
+    # Save predictions
+    df = pd.DataFrame({"filename": filenames, "actual": targets, "predicted": preds})
+    df.to_csv(os.path.join(save_dir, "predictions.csv"), index=False)
 
-    # 💾 Save confusion matrix as image
-    cm_path = os.path.join(test_results_dir, "confusion_matrix.png")
-    plt.savefig(cm_path)
-    print(f"✅ Confusion Matrix saved at: {cm_path}")
+    # Confusion matrix
+    cm = confusion_matrix(targets, preds)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+    disp.plot(cmap='Blues')
+    plt.title(cm_title)
+    plt.savefig(os.path.join(save_dir, "confusion_matrix.png"))
+    plt.close()
 
-# 🔧 Run testing from command line
+    # Test summary
+    precision = precision_score(targets, preds, average='weighted', zero_division=0)
+    recall = recall_score(targets, preds, average='weighted', zero_division=0)
+    f1 = f1_score(targets, preds, average='weighted', zero_division=0)
+    try:
+        roc = roc_auc_score(targets, preds, multi_class='ovr')
+    except:
+        roc = 0.0
+    qwk = cohen_kappa_score(targets, preds, weights="quadratic")
+
+    summary = f"""
+👤 User: {user}
+🎓 Student ID: {student_id}
+🧠 Model: {model_name}
+📦 Batch Size: {bs}
+🚀 Learning Rate: {lr}
+🕐 Evaluation Start: {start_clock}
+🏁 Evaluation End: {end_clock}
+💻 Device: {gpu_name}
+⏱️ Evaluation Duration: {total_eval_time}
+
+• Precision: {precision:.4f}
+• Recall:    {recall:.4f}
+• F1 Score:  {f1:.4f}
+• ROC AUC:   {roc:.4f}
+• QWK:       {qwk:.4f}
+""".strip()
+
+    with open(os.path.join(save_dir, "test_summary.txt"), "w") as f:
+        f.write(summary)
+
+    console.print(f"📝 Test summary saved to: {save_dir}/test_summary.txt", style="bold cyan")
+
 if __name__ == "__main__":
-    model_name = input("Enter the model to test (e.g., resnet50, efficientnet_b0, vgg16, densenet121): ").strip().lower()
-    test_model(model_name)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--user", required=True)
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--csv_root_dir", required=True)
+    parser.add_argument("--img_dir", required=True)
+    parser.add_argument("--n_classes", type=int, default=5)
+    parser.add_argument("--optim", type=str, default="adam")
+    parser.add_argument("--lr_scheduler", type=str, default="CosineAnnealingLR")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--resized_img_weight", type=int, default=224)
+    parser.add_argument("--resized_img_height", type=int, default=224)
+    parser.add_argument("--train_datacsv", required=True)
+    parser.add_argument("--val_datacsv", required=True)
+    parser.add_argument("--test_datacsv", required=True)
+    parser.add_argument("--saved_checkpoint_path", required=True)
+    parser.add_argument("--log_dir", required=True)
+    parser.add_argument("--weights", type=str, default="DEFAULT")
+    parser.add_argument("--evaluate_only", action="store_true")
+    parser.add_argument("--confusion_matrix_title", type=str, default="Confusion Matrix")
+    args = parser.parse_args()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    gpu_name = get_gpu_info()
+    start_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    console.print(f"\n🚀 Evaluation started at [bold yellow]{start_clock}[/bold yellow] on [bold green]{gpu_name}[/bold green]")
+
+    start_time = time.time()
+    model = get_model(args.model.lower(), weights=args.weights).to(device)
+    checkpoint = torch.load(args.saved_checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    criterion = nn.CrossEntropyLoss()
+    from test_dataset import get_test_loader
+    test_loader = get_test_loader(args.test_datacsv, args.img_dir, args.batch_size)
+
+    total_loss, accuracy, qwk, preds, targets, filenames = validate(model, test_loader, criterion, device)
+
+    end_clock = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+    total_eval_time = format_hms(time.time() - start_time)
+
+    console.print(f"\n📈 [bold green]Evaluation Results:[/bold green] "
+                  f"Loss = {total_loss:.4f}, Accuracy = {accuracy:.2f}%, QWK = {qwk:.4f}")
+    console.print(f"🏁 Evaluation ended at [bold yellow]{end_clock}[/bold yellow]")
+    console.print(f"⏱️ Total Time: [bold]{total_eval_time}[/bold] | Device: [bold green]{gpu_name}[/bold green]")
+
+    log_data = {
+        "user": args.user,
+        "student_id": STUDENT_ID,
+        "model": args.model,
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "run_type": "test",
+        "start_time": start_clock,
+        "end_time": end_clock,
+        "gpu": gpu_name,
+        "eval_duration": total_eval_time,
+        "loss": total_loss,
+        "accuracy": accuracy,
+        "qwk": qwk
+    }
+
+    save_log(log_data, args.user, args.model, "test", args.batch_size, args.learning_rate)
+    save_outputs(args.model, args.learning_rate, args.batch_size, preds, targets, filenames,
+                 args.confusion_matrix_title, args.user, STUDENT_ID, start_clock, end_clock, gpu_name, total_eval_time)
