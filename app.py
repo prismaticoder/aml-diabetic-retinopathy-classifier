@@ -121,7 +121,9 @@ if uploaded_file:
             # Show prediction and confidence
             st.subheader(f"🩺 **Diagnosis: {result['severity']}**")
             st.write(f"📊 **Confidence:** {result['confidence']}%")
-
+            
+            st.info(f"📝 **Recommendation:** {result['recommendation']}")
+            
             # Show chart of class probabilities
             st.image(result["chart_path"], caption="Class Probabilities", use_container_width=True)
 

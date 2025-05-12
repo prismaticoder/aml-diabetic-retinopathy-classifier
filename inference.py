@@ -22,6 +22,10 @@ severity_labels = {
     4: "Proliferative DR (Most Severe)"
 }
 
+def get_recommendation(predicted_class):
+    df = pd.read_csv("llm_recommendations.csv")
+    return df[df["dr_grade"] == predicted_class].sample(n=1)["recommendation"].values[0]
+
 # 🧠 Load the most recent trained model (ResNet or EfficientNet) by name
 def load_latest_model(model_name):
     try:
@@ -37,10 +41,10 @@ def load_latest_model(model_name):
         if not available_models:
             raise FileNotFoundError(f"❌ No trained model found for '{model_name}'!")
 
-        # 📁 Pick the matched directory
+        # Pick the matched directory
         model_dir = os.path.join("output", available_models[0])
 
-        # 📂 Find the most recently saved model weight file (.pth)
+        # Find the most recently saved model weight file (.pth)
         model_files = sorted(
             [f for f in os.listdir(model_dir) if f.endswith(".pth")],
             key=lambda x: os.path.getmtime(os.path.join(model_dir, x))
@@ -110,6 +114,8 @@ def predict(image_path, model_name):
         probabilities = torch.nn.functional.softmax(output, dim=1)[0]
         predicted_class = torch.argmax(probabilities).item()
         confidence = probabilities[predicted_class].item() * 100  # Confidence in %
+        
+    recommendation = get_recommendation(predicted_class)
 
     # 📊 Plot class probability bar chart
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -144,5 +150,6 @@ def predict(image_path, model_name):
         "confidence": round(confidence, 2),
         "probabilities": {severity_labels[i]: round(prob.item() * 100, 2) for i, prob in enumerate(probabilities)},
         "chart_path": plt_path,
-        "conf_matrix_path": conf_matrix_path
+        "conf_matrix_path": conf_matrix_path,
+        "recommendation": recommendation
     }
