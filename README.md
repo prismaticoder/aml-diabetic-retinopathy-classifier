@@ -1,89 +1,169 @@
-🚀 Diabetic Retinopathy Classifier
+# Diabetic Retinopathy Grading – Final Submission Branch
 
-A deep learning-based tool to detect Diabetic Retinopathy (DR) using ResNet-50 and EfficientNet-B0 trained on fundus images. More models will be trained and added in future updates.
+This repository contains the final submission for the EEEM068 Applied Machine Learning project on **Diabetic Retinopathy Grading**. It includes custom transformer-based architectures, detailed experiment tracking, ablation studies, and a visual demo dashboard powered by Streamlit.
 
-👥 Team Setup Instructions
+> **Note:** This is the **submission branch**. All individual work and development occurred in separate branches but has been merged and organized here for evaluation purposes.
 
-1️⃣ Download Dataset
+---
 
-- Access the refined_dataset.zip from [Google Drive](https://drive.google.com/drive/folders/1-ZTJj6OCLdIkAK7dPKd4dLW4SpdRzjBF?usp=sharing)
-- Extract the ZIP file
-- Place the extracted `dataset` folder in your project's root directory
-
-2️⃣ Set Up Virtual Environment
+## 📁 Folder Structure
 
 ```bash
-# For Windows
-python -m venv venv
-venv\Scripts\activate
-
-# For Linux/Mac
-python -m venv venv
-source venv/bin/activate
+├── models/                  # Contains implementations for all model architectures
+│   ├── maxvit.py
+│   ├── swin_transformer.py
+│   ├── rsgnet.py
+│   ├── mlp_mixer.py
+│   └── efficientnetv2.py   # Baseline model
+│
+├── experiments/            # Contains all experiments, organized by team member
+│   ├── baseline/           # Contains baseline experiments
+│   ├── 6891xx_zohaib/
+│   │   ├── experiment_1.sh
+│   │   └── ...
+│   ├── 6904xx_meena/
+│   │   ├── experiment_1.sh
+│   │   └── ...
+│   └── ...
+│
+├── dataset/                # Dataset folder (gitignored by default)
+│   ├── train/              # Images folder
+│   ├── train.csv
+│   ├── val.csv
+│   └── test.csv
+│
+├── labels/                 # Where split_data.py initially writes train/val/test labels
+│   └── ...
+│
+├── outputs/                # Outputs from each experiment (e.g., models, metrics)
+│
+├── logs/                   # Log files from training runs
+│
+├── app.py                  # Streamlit dashboard for prediction and explanations
+├── split_data.py           # Script to perform stratified split of labels
+├── requirements.txt
+└── README.md
 ```
 
-3️⃣ Install Dependencies
+---
+
+## 🔧 Setup Instructions
+
+### 1. Clone the Repository
 
 ```bash
+git clone https://github.com/prismaticoder/aml-diabetic-retinopathy-classifier.git
+cd aml-diabetic-retinopathy-classifier
+git checkout submission
+```
+
+### 2. Install Dependencies
+
+We recommend using a virtual environment.
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4️⃣ Training Process
+### 3. Dataset Setup
+
+Download the dataset from Kaggle:
+[Kaggle DR Dataset](https://www.kaggle.com/competitions/diabetic-retinopathy-detection/data)
+
+Unzipping the downloaded file should automatically create a `dataset/` folder. If it doesn't, create one manually and move the files accordingly.
+
+Make sure the images are stored as:
 
 ```bash
-python train.py
+dataset/train/0cd1683b5.jpg
 ```
 
-- Select your name (1-4):
-  1. Zohaib
-  2. Larry
-  3. Meena
-  4. Tom
-  5. Reviewer
-- Enter the model name (resnet50, efficientnet_b0, etc.)
-- Configure batch size (optional, default=32)
-- Set learning rate (optional, default=0.0001)
+---
 
-5️⃣ Logging & Version Control
+## 📊 Available Models
 
-- Training logs are automatically saved in the `logs` directory
-- Commit and push your logs to share results with the team
-- Log files are named: `{username}_{model}_{timestamp}.json`
+We implemented five models:
 
-📂 Project Structure
+* **MaxViT**: Combines CNN-like locality with transformer-style attention. We experimented with adding residual connections and removing block attention for ablation.
+* **Swin Transformer**: Hierarchical transformer using shifted windows. We explored replacing patch merging with CNN + pooling layers.
+* **RSGNet**: Residual Self-Gated Network that balances complexity and performance.
+* **MLP Mixer**: Uses MLP layers instead of convolutions or attention. Provides an interesting contrast in architecture.
+* **EfficientNetV2**: Used as our baseline model for performance comparison.
+
+All model definitions are found in the `models/` directory.
+
+---
+
+## 🔢 Running Experiments
+
+Each team member’s experiments are located in their respective folders inside the `experiments/` directory, named using the format `URN_name`.
+
+To run a specific experiment:
 
 ```bash
-diabetic_retinopathy_grading/
-│── dataset/              # Dataset folder (extract from refined_dataset.zip)
-│── logs/                 # Training logs directory
-│── output/               # Trained models & results
-│── train.py              # Model Training Script
-│── test.py               # Model Evaluation
-│── inference.py          # Inference on New Images
-│── model.py              # Model Architecture
-│── dataset.py            # Data Loading & Augmentation
-│── app.py                # Streamlit Web UI for Deployment
-│── README.md             # Documentation
-│── requirements.txt      # Required Python Libraries
-└── .gitignore            # Files to ignore when pushing to GitHub
+cd experiments/6904186_meena
+bash experiment_1.sh
 ```
 
-📌 Features
+After running, results are saved to:
 
-✔ Trained CNN Models – ResNet-50 & EfficientNet-B0
-✔ Image Upload via Web UI – Run inference on new retina images
-✔ Automatic Model Selection – Choose between different trained models
-✔ Performance Metrics – Accuracy, Confusion Matrix, and Probability Distributions
-✔ Scalable Training Pipeline – Continually train new models and update results
+* `outputs/` — for model checkpoints and evaluation metrics
+* `logs/` — for training logs and console outputs
 
-📢 Contribution
+---
 
-If you would like to contribute, feel free to fork the repository and submit a pull request! 🚀
+## 📊 Data Splitting
 
-🔗 References
+Run the following to split the dataset labels into training, validation, and test sets with stratification:
 
-Google Drive Download: [Click Here](https://drive.google.com/drive/folders/1-ZTJj6OCLdIkAK7dPKd4dLW4SpdRzjBF?usp=sharing)
+```bash
+python split_data.py
+```
 
-GitHub Repository: [Click Here](https://github.com/prismaticoder/aml-diabetic-retinopathy-classifier.git)
+This will generate `train.csv`, `val.csv`, and `test.csv` in the `labels/` directory. Move these files into the `dataset/` folder to enable training.
 
-🚀 Happy Coding! 🧑‍💻
+---
+
+## 🚀 GPU Recommendation
+
+We strongly recommend running this project with CUDA and a high-memory GPU due to the complexity and size of the transformer-based models.
+
+---
+
+## 💻 Streamlit Dashboard
+
+You can launch the Streamlit-based frontend to interact with the trained model and view predictions:
+
+```bash
+streamlit run app.py
+```
+
+The dashboard allows you to:
+
+* Upload a retinal image
+* Predict the DR grade
+* Receive actionable recommendations based on the result
+
+---
+
+## 🔝 Key Ablation Study Highlights
+
+Throughout this project, we conducted multiple ablation studies to better understand model behavior and performance drivers:
+
+* **MaxViT**: Removing block attention unexpectedly improved results; residual layers helped mitigate vanishing gradients.
+* **Swin Transformer**: CNN-based patch merging improved accuracy over default transformer merging.
+* **Warmup + Cosine Annealing**: Helped the models train longer without premature convergence.
+* **Gradient Clipping and Weight Decay**: Improved generalization in deeper models.
+
+---
+
+## 👥 Contributors
+
+* **ATTOH, LAWRENCE**
+* **PREM, MEENAKSHY**
+* **SALAM, JESUTOMIWA**
+* **SHAIKH, ZOHAIB**
+
+Thank you!
