@@ -26,6 +26,8 @@ from dataset import get_data_loaders
 
 from model import get_model
 
+from loss_kappa import WeightedKappaLoss
+
 
 
 console = Console()
@@ -93,8 +95,8 @@ def get_loss_function(name):
     elif name == "labelsmoothing":
 
         return nn.CrossEntropyLoss(label_smoothing=0.1)
-    elif name == 'mse':
-        return nn.MSELoss()
+    elif name == 'kappa':
+        return WeightedKappaLoss(num_classes=5)
     else:
 
         raise ValueError(f"❌ Unsupported loss: {name}")
@@ -115,7 +117,7 @@ def get_optimizer(name, model_params, lr):
 
     elif name == "adamw":
 
-        return optim.AdamW(model_params, lr=lr)
+        return optim.AdamW(model_params, lr=lr, weight_decay=0.01)
 
     else:
 
@@ -144,6 +146,8 @@ def train_epoch(model, loader, criterion, optimizer, device, progress_bar, task_
         loss = criterion(outputs, labels)
 
         loss.backward()
+
+        torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1.0)
 
         optimizer.step()
 
@@ -183,15 +187,28 @@ def validate(model, loader, criterion, device):
 
             outputs = model(images)
 
+            # print('Model Outputs in Val')
+            # print(outputs)
+            # print('Labels in val')
+            # print(labels)
+
             loss = criterion(outputs, labels)
 
             total_loss += loss.item()
 
             _, pred = torch.max(outputs, 1)
 
+            # print('Prediction')
+            # print(pred)
+
             preds.extend(pred.cpu().numpy())
 
             targets.extend(labels.cpu().numpy())
+
+            # print('All Preds')
+            # print(preds)
+            # print('All tarfets')
+            # print(targets)
 
             correct += (pred == labels).sum().item()
 

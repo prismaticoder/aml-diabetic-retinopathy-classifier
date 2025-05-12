@@ -7,7 +7,7 @@ from torchvision.models import (
     efficientnet_b0, EfficientNet_B0_Weights,
     efficientnet_v2_s, EfficientNet_V2_S_Weights,
     resnet50, ResNet50_Weights,
-    maxvit_t, MaxViT_T_Weights,
+    maxvit_t, MaxVit_T_Weights,
 )
 
 def get_rsgnet(n_classes=5):
@@ -52,8 +52,11 @@ def get_model(name, weights="DEFAULT", n_classes=5):
         model = get_rsgnet(n_classes=n_classes)
     elif name == "maxvit":
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
+    elif name == "maxvit_2":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
     elif name == "maxvit_t":
-        model = maxvit_t(weights=MaxViT_T_Weights.DEFAULT, num_classes=n_classes)
+        model = maxvit_t(weights=MaxVit_T_Weights.DEFAULT)
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
     else:
         raise ValueError(f"❌ Unsupported model: {name}")
     return model

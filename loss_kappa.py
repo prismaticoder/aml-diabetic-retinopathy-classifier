@@ -47,12 +47,12 @@ class WeightedKappaLoss(nn.Module):
   
   def kappa_loss(self, y_pred, y_true):
     num_classes = self.num_classes
-    y = torch.eye(num_classes).to(device)
+    y = torch.eye(num_classes).to('cuda')
     y_true = y[y_true]
 
     y_true = y_true.float()
 
-    repeat_op = torch.Tensor(list(range(num_classes))).unsqueeze(1).repeat((1, num_classes)).to(device)
+    repeat_op = torch.Tensor(list(range(num_classes))).unsqueeze(1).repeat((1, num_classes)).to('cuda')
     repeat_op_sq = torch.square((repeat_op - repeat_op.T))
     weights = repeat_op_sq / ((num_classes - 1) ** 2)
 

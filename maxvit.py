@@ -179,7 +179,7 @@ class MaxViT(nn.Module):
         in_chans: int = 3,
         n_classes: int = 5,
         embed_dims: tuple = (64, 128, 256, 512),
-        depths:     tuple = (2, 2, 5, 2),
+        depths:     tuple = (1, 1, 2, 2),
         window_size: int = 7,
         **block_kwargs
     ):
