@@ -1,76 +1,70 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-from maxvit import MaxViT
+from models.maxvit import MaxViT
+from models.rsgnet import RSGNet
+from models.swin_transformer import SwinIJICTransformer, SwinIJICTransformer_AddStage, SwinIJICTransformer_AddExtraBlocks
+from models.mlp_mixer import MLPMixer, MLPMixerV2_AddLayer, MLPMixerV2BatchNorm
 
 from torchvision.models import (
     efficientnet_b0, EfficientNet_B0_Weights,
     efficientnet_v2_s, EfficientNet_V2_S_Weights,
-    resnet50, ResNet50_Weights,
-    maxvit_t, MaxVit_T_Weights,
+    resnet50, ResNet50_Weights
 )
 
-def get_rsgnet(n_classes=5):
-    class RSGNet(nn.Module):
-        def __init__(self):
-            super(RSGNet, self).__init__()
-            self.features = nn.Sequential(
-                nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
-                nn.ReLU(),
-                nn.MaxPool2d(2, 2),
-                nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-                nn.ReLU(),
-                nn.MaxPool2d(2, 2),
-                nn.Flatten(),
-            )
-            self.classifier = nn.Sequential(
-                nn.Linear(32 * 56 * 56, 512),
-                nn.ReLU(),
-                nn.Dropout(0.5),
-                nn.Linear(512, n_classes)
-            )
-
-        def forward(self, x):
-            x = self.features(x)
-            x = self.classifier(x)
-            return x
-
-    return RSGNet()
-
-def get_model(name, weights="DEFAULT", n_classes=5):
-    name = name.lower()
+def get_model(name, weights="DEFAULT", n_classes=5, model_variant="baseline"):
+    name = name.lower().strip()
+    
     if name == "efficientnet_b0":
         model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT if weights == "DEFAULT" else None)
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
+        
     elif name == "efficientnet_v2_s":
         model = efficientnet_v2_s(weights=EfficientNet_V2_S_Weights.DEFAULT if weights == "DEFAULT" else None)
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
+        
     elif name == "resnet50":
         model = resnet50(weights=ResNet50_Weights.DEFAULT if weights == "DEFAULT" else None)
         model.fc = nn.Linear(model.fc.in_features, n_classes)
+        
     elif name == "rsgnet":
-        model = get_rsgnet(n_classes=n_classes)
+        model = RSGNet(n_classes=n_classes, variant=model_variant)
+        
+    elif name == "swin_custom":
+        model = SwinIJICTransformer(n_classes=n_classes)
+    
+    elif name == "swin_custom_addstage":
+        model = SwinIJICTransformer_AddStage(n_classes=n_classes)
+    
+    elif name == "swin_custom_addextrablocks":
+        model = SwinIJICTransformer_AddExtraBlocks(n_classes=n_classes)
+        
+    elif name == "mlp_mixer":
+        model = MLPMixer(num_classes=n_classes)
+        
+    elif name == "mlp_mixer_v2_addlayer":
+        model = MLPMixerV2_AddLayer(num_classes=n_classes)
+        
+    elif name == "mlp_mixer_v2_batchnorm":
+        model = MLPMixerV2BatchNorm(num_classes=n_classes)
+        
     elif name == "maxvit":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
-    elif name == "maxvit_2":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
-    elif name == "maxvit_3":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=False)
-    elif name == "maxvit_4":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
-    elif name == "maxvit_5":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=False)
-    elif name == "maxvit_6":
-        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
-    elif name == "maxvit_7":
-        model = MaxViT(n_classes=n_classes, use_mbconv=False, use_block_attn=True, use_grid_attn=True)
+        use_mbconv, use_block_attn, use_grid_attn = True, True, True
+        if model_variant == 'remove_block_attn':
+            use_block_attn = False
+        elif model_variant == 'remove_grid_attn':
+            use_grid_attn = False
+        elif model_variant == 'remove_mbconv':
+            use_mbconv = False
+        elif model_variant == 'remove_attn':
+            use_block_attn, use_grid_attn = False, False
+            
+        model = MaxViT(n_classes=n_classes, use_mbconv=use_mbconv, use_block_attn=use_block_attn, use_grid_attn=use_grid_attn)
+        
     elif name == "maxvit_mse":
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
         if hasattr(model, 'head'):
             model.head = nn.Linear(model.head.in_features, 1)
-    elif name == "maxvit_t":
-        model = maxvit_t(weights=MaxVit_T_Weights.DEFAULT)
-        model.classifier[1] = nn.Linear(model.classifier[1].in_features, n_classes)
     else:
         raise ValueError(f"❌ Unsupported model: {name}")
     return model
