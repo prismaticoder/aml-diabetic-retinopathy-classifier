@@ -79,7 +79,6 @@ def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, t
         
         total_loss += loss.item()
         
-        correct += (outputs.argmax(1) == labels).sum().item()
         if isinstance(criterion, nn.MSELoss):
             preds_batch = outputs.round().long().squeeze(1)   # regression → class id
             preds_batch = preds_batch.clamp(0, 4)
