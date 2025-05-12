@@ -54,6 +54,16 @@ def get_model(name, weights="DEFAULT", n_classes=5):
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
     elif name == "maxvit_2":
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
+    elif name == "maxvit_3":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=False)
+    elif name == "maxvit_4":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
+    elif name == "maxvit_5":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=False)
+    elif name == "maxvit_6":
+        model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=True, use_grid_attn=True)
+    elif name == "maxvit_7":
+        model = MaxViT(n_classes=n_classes, use_mbconv=False, use_block_attn=True, use_grid_attn=True)
     elif name == "maxvit_mse":
         model = MaxViT(n_classes=n_classes, use_mbconv=True, use_block_attn=False, use_grid_attn=True)
         if hasattr(model, 'head'):
