@@ -64,7 +64,7 @@ We recommend using a virtual environment.
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements.txt # If you get any error running this on a LINUX based system, use requirements_linux_cuda118.txt instead
 ```
 
 ### 3. Dataset Setup
