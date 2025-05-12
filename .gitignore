@@ -16,6 +16,7 @@ __pycache__/
 
 # Ignore output folder (as models will be updated frequently)
 output/
+no_use/
 
 # Ignore log files
 *.log
