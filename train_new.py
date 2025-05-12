@@ -53,7 +53,7 @@ def get_optimizer(name, params, lr):
     name = name.lower()
     if name == "adam": return optim.Adam(params, lr=lr)
     elif name == "sgd": return optim.SGD(params, lr=lr, momentum=0.9)
-    elif name == "adamw": return optim.AdamW(params, lr=lr, weight_decay=0.01)
+    elif name == "adamw": return optim.AdamW(params, lr=lr, weight_decay=0.03)
     raise ValueError(f"❌ Unsupported optimizer: {name}")
 
 def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, task_id, scheduler):
@@ -75,6 +75,8 @@ def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, t
         
         scaler.step(optimizer)
         scaler.update()
+        scheduler.step()
+        
         total_loss += loss.item()
         
         correct += (outputs.argmax(1) == labels).sum().item()
@@ -87,7 +89,7 @@ def train_epoch(model, loader, criterion, optimizer, scaler, device, progress, t
         total += labels.size(0)
         acc = 100 * correct / total
         progress.update(task_id, advance=1, description=f"[green]Loss: {loss.item():.4f}, Acc: {acc:.2f}%")
-    scheduler.step()
+    # scheduler.step()
     return total_loss, acc
 
 def validate(model, loader, criterion, device):
@@ -185,11 +187,21 @@ if __name__ == "__main__":
     model = get_model(args.model.lower(), weights=args.weights, n_classes=args.n_classes).to(device)
     optimizer = get_optimizer(args.optim, model.parameters(), args.learning_rate)
     criterion = get_loss_function(args.loss)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=args.epochs, eta_min=0, last_epoch=-1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=args.epochs, eta_min=0, last_epoch=-1)
     scaler = GradScaler()
 
     train_loader, val_loader = get_data_loaders(args.csv_root_dir, args.img_dir, args.batch_size,
                                                 num_workers=args.num_workers)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=args.learning_rate,
+        epochs=args.epochs,
+        steps_per_epoch=len(train_loader),
+        anneal_strategy='cos',
+        div_factor=25,
+        final_div_factor=1e4,
+        pct_start=0.2,
+    )
     model_dir = f"output/{args.model}_opt{args.optim}_lr{args.learning_rate}_bs{args.batch_size}_loss{args.loss}_aug{args.augmentation_profile or 'none'}"
     plot_dir = os.path.join(args.log_dir, "plots")
 
