@@ -26,13 +26,18 @@ class DiabeticRetinopathyDataset(Dataset):
         return image, label
 
 train_transform = A.Compose([
-    A.Resize(224, 224),
+    A.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.75, 1.33), p=1.0),
     A.HorizontalFlip(p=0.5),
+    A.Rotate(limit=15, p=0.5),
     A.RandomBrightnessContrast(p=0.2),
+    A.ElasticTransform(p=0.2),
+    A.GridDistortion(p=0.2),
     A.Normalize(mean=[0.485, 0.456, 0.406],
                 std=[0.229, 0.224, 0.225]),
     ToTensorV2()
 ])
+
+
 
 val_transform = A.Compose([
     A.Resize(224, 224),
@@ -41,7 +46,13 @@ val_transform = A.Compose([
     ToTensorV2()
 ])
 
-def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1):
+def get_data_loaders(csv_root_dir, img_dir, batch_size=32, num_workers=1, only_test=False):
+    if only_test:
+        test_csv_path = os.path.join(csv_root_dir, "test.csv")
+        test_dataset = DiabeticRetinopathyDataset(test_csv_path, img_dir, val_transform)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        return test_loader
+
     train_csv_path = os.path.join(csv_root_dir, "train.csv")
     val_csv_path = os.path.join(csv_root_dir, "val.csv")
     
