@@ -45,6 +45,8 @@ def get_loss_function(name):
         return nn.CrossEntropyLoss(label_smoothing=0.1)
     elif name == 'kappa':
         return WeightedKappaLoss(num_classes=5)
+    elif name == "mse":
+        return nn.MSELoss()
     raise ValueError(f"❌ Unsupported loss: {name}")
 
 def get_optimizer(name, params, lr):
